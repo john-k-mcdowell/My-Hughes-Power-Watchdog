@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Hughes Power Watchdog",
+        "description": "Select your Hughes Power Watchdog device",
+        "data": {
+          "mac_address": "Device"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Confirm Hughes Power Watchdog",
+        "description": "Do you want to set up {name}?"
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to device",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Device is already configured",
+      "no_devices_found": "No Hughes Power Watchdog devices found"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Hughes Power Watchdog Options",
+        "data": {
+          "scan_interval": "Update interval (seconds)"
+        }
+      }
+    }
+  }
+}
