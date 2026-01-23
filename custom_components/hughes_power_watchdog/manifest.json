@@ -1,12 +1,12 @@
 {
   "domain": "hughes_power_watchdog",
   "name": "Hughes Power Watchdog",
-  "codeowners": ["@kellym"],
+  "codeowners": ["@john-k-mcdowell"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/kellym/My-Hughes-Power-Watchdog",
+  "documentation": "https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/kellym/My-Hughes-Power-Watchdog/issues",
+  "issue_tracker": "https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues",
   "requirements": [],
   "version": "0.3.0",
   "bluetooth": [

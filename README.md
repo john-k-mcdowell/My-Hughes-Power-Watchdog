@@ -1,6 +1,10 @@
 # Hughes Power Watchdog - Home Assistant Integration
 
-**** This integration is not ready for use, it is still in initial testing ****
+**⚠️ INITIAL TESTING - NOT READY FOR PUBLIC USE**
+
+**This integration is currently in initial development and has NOT been tested with actual hardware. Use at your own risk. Data parsing and BLE communication may require adjustments based on real device behavior.**
+
+---
 
 A native Home Assistant integration for Hughes Power Watchdog Surge Protectors with Bluetooth connectivity.
 
@@ -37,7 +41,7 @@ This integration allows you to monitor your RV's power directly in Home Assistan
 2. Click on "Integrations"
 3. Click the three dots in the top right corner
 4. Select "Custom repositories"
-5. Add this repository URL: `https://github.com/kellym/My-Hughes-Power-Watchdog`
+5. Add this repository URL: `https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog`
 6. Select category: "Integration"
 7. Click "Add"
 8. Find "Hughes Power Watchdog" in the integration list
@@ -90,4 +94,4 @@ MIT License
 
 ## Support
 
-For issues and feature requests, please use the [GitHub issue tracker](https://github.com/kellym/My-Hughes-Power-Watchdog/issues).
+For issues and feature requests, please use the [GitHub issue tracker](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues).
