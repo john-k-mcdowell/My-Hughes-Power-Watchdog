@@ -1,0 +1,12 @@
+# Configuration file for Hughes Power Watchdog integration
+# This integration uses UI-based configuration flow through Home Assistant
+# No YAML configuration is required or supported
+
+# To configure:
+# 1. Go to Settings -> Devices & Services in Home Assistant
+# 2. Click "Add Integration"
+# 3. Search for "Hughes Power Watchdog"
+# 4. Follow the on-screen instructions
+
+# Optional configuration (set via integration options):
+# - scan_interval: Update interval in seconds (default: 30)

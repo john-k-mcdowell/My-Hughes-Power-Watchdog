@@ -1,54 +1,91 @@
-# Hughes Power Watchdog in HomeAssistant via ESPHome
+# Hughes Power Watchdog - Home Assistant Integration
 
-*** *I am no longer able to maintain this project as of August 2023. I no longer own an RV or a Hughes device required to coninue work.* ***
+A native Home Assistant integration for Hughes Power Watchdog Surge Protectors with Bluetooth connectivity.
 
-### Materials Needed
--   Hughes Power Watchdog Surge Protector *(any PWD or PWS model w/ bluetooth)*
--   NodeMCU ESP32
--   BLE Sniffer/BLE Sniffing App/HomeAssistant BLE Integration
--   HomeAssistant w/ ESPHome add-on
-    <br><br />
+This integration allows you to monitor your RV's power directly in Home Assistant without needing an ESP32 device. It connects directly to your Hughes Power Watchdog via Bluetooth.
 
-# Instructions
+## Features
 
-These instructions will assume that you have the latest version of HomeAssistant and the ESPHome add-on installed.
+### Supported Models
+- Hughes Power Watchdog (PWD) - any model with Bluetooth
+- Hughes Power Watch (PWS) - any model with Bluetooth
 
-1.  Using a BLE sniffer device or BLE sniffing smartphone app (Android only), determine your Watchdog's MAC address. Start by looking for a device named "PMD    ###########". Some newer devices may show as "PWS" instead of "PMD". Make a note of your MAC address, as you will need this later.<br><br>It's important to note that Apple devices won't be useful in this step, since Apple purposly obfuscates MAC address data for security purposes. A workaround for this is to use the Bluetoothe LE Tracker integration inside of HomeAssistant if your device has a bluetooth receiver. Once enabled, navigate to your "known_devices.yaml" file, and you will find the PWD/PWS device along with it's associated MAC address.
+### Available Sensors
+- **Line 1 Voltage** (volts)
+- **Line 1 Current** (amps)
+- **Line 1 Power** (watts)
+- **Cumulative Power Usage** (kWh)
+- **Error Code** (number)
+- **Error Description** (text)
 
-2.  Add the ESP32 to your ESPHome. Copy the code found [here](hughes_esphome.yaml) to your ESP32 config. Change the "*mac_address:*" to your MAC address found in step 1. Save and install to your ESP32.
+**50 Amp Units Only:**
+- **Line 2 Voltage** (volts)
+- **Line 2 Current** (amps)
+- **Line 2 Power** (watts)
+- **Total Combined Power** (L1 + L2, watts)
 
-3.  While your ESP32 is installing and rebooting, ensure there are no devices connected to your Hughes, including your phone. The Hughes PWD only allows a single device to connect at a time.
+### Controls
+- **Monitoring Switch** - Enable/disable BLE connection to allow other apps to connect
 
-4.  You should now notice new sensors available in HomeAssistant. Along with the new sensors, there is a switch built-in to the integration to allow you to stop monitoring via your ESP32 in case you want to connect another device (such as the Hughes app).
-    <br><br />
-    
-### Sensors Available
-- Cumulative Power Usage
-- Line 1 Voltage (volts)
-- Line 1 Current (amps)
-- Line 1 Power (watts)
-- Error Code Number
-- Error Code Description
+## Installation
 
-*Additional sensors only available on 50amp units:*
-- Line 2 Voltage (volts)
-- Line 2 Current (amps)
-- Line 2 Power (watts)
-- Total Combined Power (L1 + L2) (watts)
-    <br><br />
+### HACS Installation (Recommended)
 
-### Future Updates
-- Support for resetting the app's cumulative kWh counter via HA
-    <br><br />
+1. Open HACS in your Home Assistant instance
+2. Click on "Integrations"
+3. Click the three dots in the top right corner
+4. Select "Custom repositories"
+5. Add this repository URL: `https://github.com/kellym/My-Hughes-Power-Watchdog`
+6. Select category: "Integration"
+7. Click "Add"
+8. Find "Hughes Power Watchdog" in the integration list
+9. Click "Download"
+10. Restart Home Assistant
 
-### Troubleshooting
-Depending on the ESP device that you are using, you may run into installation problems when ESPHome attempts to install the code OTA. A common issue is "Error 104", which typically means the ESP device ran out of memory and cannot complete the installation. This is common after the first installation because the ESP automatically connect to the PWD and is contiuously receiving data from the device, which can quickly use up memory while an installation is in progress.
-<br><br>
-An easy work around for this is to utilize the virtual switch built-in to the code, available via the HomeAssistant frontend. Before you install updated code, turn this switch to Off. This will disconnect the ESP from the Hughes. Once disconnected, open your mobile app and connect via the Hughes app to prevent the ESP from automatically re-connecting during the installation process. Install the new code, then disconnect the app and turn the switch back on. The ESP should reconnect shortly after that.
-<br><br />
+### Manual Installation
 
-### Contributions
-Many thanks to everybody who helped with this project. Without the help of each and every one of them, this project would not have been sucessful. Extra special thanks goes out to:
+1. Copy the `custom_components/hughes_power_watchdog` folder to your Home Assistant `custom_components` directory
+2. Restart Home Assistant
+
+## Configuration
+
+1. Go to **Settings** → **Devices & Services**
+2. Click **Add Integration**
+3. Search for "Hughes Power Watchdog"
+4. Follow the configuration prompts
+5. The integration will automatically discover nearby Hughes devices
+6. Select your device from the list
+
+## Requirements
+
+- Home Assistant 2023.1.0 or newer
+- Bluetooth adapter/proxy in range of your Hughes Power Watchdog
+- Hughes Power Watchdog with Bluetooth (PMD or PWS model)
+
+## Troubleshooting
+
+### Device Not Found
+- Ensure no other devices are connected to your Hughes Power Watchdog (it only supports one connection at a time)
+- Make sure Bluetooth is enabled on your Home Assistant host
+- Verify your Hughes device is powered on and within Bluetooth range
+- Try using the Hughes mobile app to confirm the device is functioning
+
+### Connection Issues
+- Disconnect any mobile apps connected to the Hughes device
+- Toggle the Monitoring Switch off and on
+- Restart the integration
+
+## Credits
+
+Based on the original ESPHome implementation by:
 - [spbrogan](https://github.com/spbrogan)
 - [makifoxgirl](https://github.com/makifoxgirl)
 - SergeantBort
+
+## License
+
+MIT License
+
+## Support
+
+For issues and feature requests, please use the [GitHub issue tracker](https://github.com/kellym/My-Hughes-Power-Watchdog/issues).

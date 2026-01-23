@@ -1,0 +1,20 @@
+{
+  "domain": "hughes_power_watchdog",
+  "name": "Hughes Power Watchdog",
+  "codeowners": ["@kellym"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/kellym/My-Hughes-Power-Watchdog",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/kellym/My-Hughes-Power-Watchdog/issues",
+  "requirements": ["bleak>=0.21.0"],
+  "version": "0.1.0",
+  "bluetooth": [
+    {
+      "local_name": "PMD*"
+    },
+    {
+      "local_name": "PWS*"
+    }
+  ]
+}
