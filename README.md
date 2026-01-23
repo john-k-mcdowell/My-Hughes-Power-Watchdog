@@ -1,5 +1,7 @@
 # Hughes Power Watchdog - Home Assistant Integration
 
+**** This integration is not ready for use, it is still in initial testing ****
+
 A native Home Assistant integration for Hughes Power Watchdog Surge Protectors with Bluetooth connectivity.
 
 This integration allows you to monitor your RV's power directly in Home Assistant without needing an ESP32 device. It connects directly to your Hughes Power Watchdog via Bluetooth.
