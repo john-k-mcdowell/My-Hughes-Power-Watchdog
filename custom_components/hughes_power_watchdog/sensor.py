@@ -18,6 +18,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DOMAIN,
@@ -32,6 +33,7 @@ from .const import (
     SENSOR_VOLTAGE_L1,
     SENSOR_VOLTAGE_L2,
 )
+from .coordinator import HughesPowerWatchdogCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,34 +44,46 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Hughes Power Watchdog sensors."""
+    coordinator: HughesPowerWatchdogCoordinator = hass.data[DOMAIN][
+        config_entry.entry_id
+    ]
+
     sensors = [
-        HughesPowerWatchdogVoltageSensor(config_entry, SENSOR_VOLTAGE_L1, "Line 1"),
-        HughesPowerWatchdogCurrentSensor(config_entry, SENSOR_CURRENT_L1, "Line 1"),
-        HughesPowerWatchdogPowerSensor(config_entry, SENSOR_POWER_L1, "Line 1"),
-        HughesPowerWatchdogVoltageSensor(config_entry, SENSOR_VOLTAGE_L2, "Line 2"),
-        HughesPowerWatchdogCurrentSensor(config_entry, SENSOR_CURRENT_L2, "Line 2"),
-        HughesPowerWatchdogPowerSensor(config_entry, SENSOR_POWER_L2, "Line 2"),
+        HughesPowerWatchdogVoltageSensor(coordinator, SENSOR_VOLTAGE_L1, "Line 1"),
+        HughesPowerWatchdogCurrentSensor(coordinator, SENSOR_CURRENT_L1, "Line 1"),
+        HughesPowerWatchdogPowerSensor(coordinator, SENSOR_POWER_L1, "Line 1"),
+        HughesPowerWatchdogVoltageSensor(coordinator, SENSOR_VOLTAGE_L2, "Line 2"),
+        HughesPowerWatchdogCurrentSensor(coordinator, SENSOR_CURRENT_L2, "Line 2"),
+        HughesPowerWatchdogPowerSensor(coordinator, SENSOR_POWER_L2, "Line 2"),
         HughesPowerWatchdogPowerSensor(
-            config_entry, SENSOR_COMBINED_POWER, "Combined"
+            coordinator, SENSOR_COMBINED_POWER, "Combined"
         ),
-        HughesPowerWatchdogEnergySensor(config_entry),
-        HughesPowerWatchdogErrorCodeSensor(config_entry),
-        HughesPowerWatchdogErrorTextSensor(config_entry),
+        HughesPowerWatchdogEnergySensor(coordinator),
+        HughesPowerWatchdogErrorCodeSensor(coordinator),
+        HughesPowerWatchdogErrorTextSensor(coordinator),
     ]
 
     async_add_entities(sensors)
 
 
-class HughesPowerWatchdogSensor(SensorEntity):
+class HughesPowerWatchdogSensor(CoordinatorEntity[HughesPowerWatchdogCoordinator], SensorEntity):
     """Base class for Hughes Power Watchdog sensors."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, config_entry: ConfigEntry, sensor_type: str) -> None:
+    def __init__(
+        self, coordinator: HughesPowerWatchdogCoordinator, sensor_type: str
+    ) -> None:
         """Initialize the sensor."""
-        self._config_entry = config_entry
+        super().__init__(coordinator)
         self._sensor_type = sensor_type
-        self._attr_unique_id = f"{config_entry.entry_id}_{sensor_type}"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{sensor_type}"
+        self._attr_device_info = coordinator.device_info
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return self.coordinator.last_update_success and self._sensor_type in self.coordinator.data
 
 
 class HughesPowerWatchdogVoltageSensor(HughesPowerWatchdogSensor):
@@ -81,11 +95,16 @@ class HughesPowerWatchdogVoltageSensor(HughesPowerWatchdogSensor):
     _attr_suggested_display_precision = 0
 
     def __init__(
-        self, config_entry: ConfigEntry, sensor_type: str, line: str
+        self, coordinator: HughesPowerWatchdogCoordinator, sensor_type: str, line: str
     ) -> None:
         """Initialize voltage sensor."""
-        super().__init__(config_entry, sensor_type)
+        super().__init__(coordinator, sensor_type)
         self._attr_name = f"Voltage {line}"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the voltage value."""
+        return self.coordinator.data.get(self._sensor_type)
 
 
 class HughesPowerWatchdogCurrentSensor(HughesPowerWatchdogSensor):
@@ -97,11 +116,16 @@ class HughesPowerWatchdogCurrentSensor(HughesPowerWatchdogSensor):
     _attr_suggested_display_precision = 1
 
     def __init__(
-        self, config_entry: ConfigEntry, sensor_type: str, line: str
+        self, coordinator: HughesPowerWatchdogCoordinator, sensor_type: str, line: str
     ) -> None:
         """Initialize current sensor."""
-        super().__init__(config_entry, sensor_type)
+        super().__init__(coordinator, sensor_type)
         self._attr_name = f"Current {line}"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the current value."""
+        return self.coordinator.data.get(self._sensor_type)
 
 
 class HughesPowerWatchdogPowerSensor(HughesPowerWatchdogSensor):
@@ -113,11 +137,16 @@ class HughesPowerWatchdogPowerSensor(HughesPowerWatchdogSensor):
     _attr_suggested_display_precision = 0
 
     def __init__(
-        self, config_entry: ConfigEntry, sensor_type: str, line: str
+        self, coordinator: HughesPowerWatchdogCoordinator, sensor_type: str, line: str
     ) -> None:
         """Initialize power sensor."""
-        super().__init__(config_entry, sensor_type)
+        super().__init__(coordinator, sensor_type)
         self._attr_name = f"Power {line}"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the power value."""
+        return self.coordinator.data.get(self._sensor_type)
 
 
 class HughesPowerWatchdogEnergySensor(HughesPowerWatchdogSensor):
@@ -128,10 +157,15 @@ class HughesPowerWatchdogEnergySensor(HughesPowerWatchdogSensor):
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_display_precision = 1
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: HughesPowerWatchdogCoordinator) -> None:
         """Initialize energy sensor."""
-        super().__init__(config_entry, SENSOR_TOTAL_POWER)
+        super().__init__(coordinator, SENSOR_TOTAL_POWER)
         self._attr_name = "Cumulative Power Usage"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the energy value."""
+        return self.coordinator.data.get(self._sensor_type)
 
 
 class HughesPowerWatchdogErrorCodeSensor(HughesPowerWatchdogSensor):
@@ -139,10 +173,15 @@ class HughesPowerWatchdogErrorCodeSensor(HughesPowerWatchdogSensor):
 
     _attr_icon = "mdi:alert-circle"
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: HughesPowerWatchdogCoordinator) -> None:
         """Initialize error code sensor."""
-        super().__init__(config_entry, SENSOR_ERROR_CODE)
+        super().__init__(coordinator, SENSOR_ERROR_CODE)
         self._attr_name = "Error Code"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the error code value."""
+        return self.coordinator.data.get(self._sensor_type)
 
 
 class HughesPowerWatchdogErrorTextSensor(HughesPowerWatchdogSensor):
@@ -150,7 +189,12 @@ class HughesPowerWatchdogErrorTextSensor(HughesPowerWatchdogSensor):
 
     _attr_icon = "mdi:alert-circle-outline"
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: HughesPowerWatchdogCoordinator) -> None:
         """Initialize error text sensor."""
-        super().__init__(config_entry, SENSOR_ERROR_TEXT)
+        super().__init__(coordinator, SENSOR_ERROR_TEXT)
         self._attr_name = "Error Description"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the error text value."""
+        return self.coordinator.data.get(self._sensor_type)

@@ -37,3 +37,6 @@ htmlcov/
 # Home Assistant
 home-assistant.log
 home-assistant_v2.db
+
+# Development Documentation
+how-it-works.md

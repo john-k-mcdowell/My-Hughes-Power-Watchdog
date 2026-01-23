@@ -7,8 +7,8 @@
   "documentation": "https://github.com/kellym/My-Hughes-Power-Watchdog",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/kellym/My-Hughes-Power-Watchdog/issues",
-  "requirements": ["bleak>=0.21.0"],
-  "version": "0.1.0",
+  "requirements": [],
+  "version": "0.3.0",
   "bluetooth": [
     {
       "local_name": "PMD*"
