@@ -30,6 +30,49 @@ Create a HACS-installable Home Assistant custom integration for Hughes Power Wat
 - [x] Document sensor entities available
 - [x] Document configuration options
 
+---
+
+# Fix Coordinator Warnings - v0.3.2
+
+## Issues to Address
+
+### Issue 1: BleakClient.connect() Warning
+- **Source**: coordinator.py:189
+- **Problem**: Using `BleakClientWithServiceCache.connect()` directly instead of `establish_connection()`
+- **Solution**: Use `bleak_retry_connector.establish_connection()` for reliable connection establishment
+
+### Issue 2: Invalid Header Warnings (Noisy Logs)
+- **Source**: coordinator.py:412
+- **Problem**: Logging warnings for every packet that doesn't match expected header `b'\x01\x03\x20'`
+- **Observation**: The device sends multiple packet types; non-data packets should be silently ignored
+- **Solution**: Change from `warning` to `debug` level logging for non-matching headers
+
+## Fix Todo Items
+
+- [x] Update `_ensure_connected()` to use `establish_connection()` from bleak_retry_connector
+- [x] Change invalid header logging from `warning` to `debug` level
+- [x] Update version to 0.3.2 in version.py and manifest.json
+- [x] Verify syntax with Python compile check
+
+## v0.3.2 Review
+
+### Changes Made
+1. **coordinator.py**: Updated import from `BleakClientWithServiceCache` to `establish_connection`
+2. **coordinator.py**: Changed `_ensure_connected()` to use `establish_connection(BleakClient, ble_device, self.address)` instead of manual connect
+3. **coordinator.py**: Changed invalid header logging from `warning` to `debug` level with clearer message
+4. **version.py**: Bumped version to 0.3.2
+5. **manifest.json**: Bumped version to 0.3.2
+
+### Warnings Fixed
+- BleakClient.connect() warning - now uses HA-recommended `establish_connection()`
+- Invalid header warnings - reduced to debug level since device sends multiple packet types
+
+### Syntax Verification
+- All Python files pass compile check
+- manifest.json validates as valid JSON
+
+---
+
 ## Notes
 - Integration domain: `hughes_power_watchdog`
 - BLE connection similar to ESPHome implementation

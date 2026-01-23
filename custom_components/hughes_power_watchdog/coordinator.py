@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from bleak import BleakClient
 from bleak.exc import BleakError
-from bleak_retry_connector import BleakClientWithServiceCache
+from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
@@ -184,9 +184,10 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         CONNECTION_MAX_ATTEMPTS,
                     )
 
-                    # Create and connect client with service cache
-                    self._client = BleakClientWithServiceCache(ble_device)
-                    await self._client.connect()
+                    # Create and connect client using establish_connection
+                    self._client = await establish_connection(
+                        BleakClient, ble_device, self.address
+                    )
 
                     # Success - reduce delay for next time
                     self._connect_delay = max(
@@ -406,10 +407,10 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning("Incomplete data packet: %d bytes", len(self._data_buffer))
             return
 
-        # Verify header
+        # Verify header - device sends multiple packet types, only process data packets
         header = bytes(self._data_buffer[BYTE_HEADER_START:BYTE_HEADER_END])
         if header != HEADER_BYTES:
-            _LOGGER.warning("Invalid header: %s (expected %s)", header, HEADER_BYTES)
+            _LOGGER.debug("Skipping non-data packet with header: %s", header)
             return
 
         # Extract voltage (big-endian int32 ÷ 10000)
