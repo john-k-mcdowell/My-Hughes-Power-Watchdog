@@ -491,6 +491,15 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug("Built data dict: %s", data)
         return data
 
+    def start_monitoring(self) -> None:
+        """Start/restart monitoring and background tasks.
+
+        Called when the monitoring switch is turned on to restart
+        the command worker and health monitor tasks.
+        """
+        self._start_background_tasks()
+        _LOGGER.debug("Monitoring started for %s", self.address)
+
     async def async_disconnect(self) -> None:
         """Disconnect from device and cleanup background tasks."""
         # Cancel background tasks

@@ -58,6 +58,10 @@ class HughesPowerWatchdogMonitoringSwitch(
 
         # Resume coordinator updates
         self.coordinator.update_interval = timedelta(seconds=DEFAULT_SCAN_INTERVAL)
+
+        # Restart background tasks (command worker, health monitor)
+        self.coordinator.start_monitoring()
+
         await self.coordinator.async_refresh()
         self.async_write_ha_state()
         _LOGGER.debug("Monitoring enabled for %s", self.coordinator.address)
