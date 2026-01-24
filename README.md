@@ -1,20 +1,18 @@
 # Hughes Power Watchdog - Home Assistant Integration
 
-**⚠️ INITIAL TESTING - NOT READY FOR PUBLIC USE**
-
-**This integration is currently in initial development and has NOT been tested with actual hardware. Use at your own risk. Data parsing and BLE communication may require adjustments based on real device behavior.**
+**⚠️ INITIAL TESTING - TESTED USING A PWD50-EPD (GEN I).  IT SHOULD WORK ON OTHER MODELS BUT I CAN'T TEST **
 
 ---
 
 A native Home Assistant integration for Hughes Power Watchdog Surge Protectors with Bluetooth connectivity.
 
-This integration allows you to monitor your RV's power directly in Home Assistant without needing an ESP32 device. It connects directly to your Hughes Power Watchdog via Bluetooth.
+This integration allows you to monitor your RV's power directly in Home Assistant without needing a special configuration on an ESP32 device. It connects directly to your Hughes Power Watchdog via Bluetooth or ESP-32 Bluetooth Proxy.
 
 ## Features
 
 ### Supported Models
 - Hughes Power Watchdog (PWD) - any model with Bluetooth
-- Hughes Power Watch (PWS) - any model with Bluetooth
+- Hughes Power Watch (PWS) - any model with Bluetooth (not tested yet)
 
 ### Available Sensors
 - **Line 1 Voltage** (volts)
@@ -30,8 +28,9 @@ This integration allows you to monitor your RV's power directly in Home Assistan
 - **Line 2 Power** (watts)
 - **Total Combined Power** (L1 + L2, watts)
 
-### Controls
-- **Monitoring Switch** - Enable/disable BLE connection to allow other apps to connect
+### Controls (Future Development)
+- ** Not Implemented yet - Monitoring Switch** - Enable/disable BLE connection to allow other apps to connect
+- ** Not Implemented yet - Reset Power Usage Total
 
 ## Installation
 
