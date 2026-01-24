@@ -25,6 +25,20 @@
 - Pre compile all python code to check for syntax errors
 - This project will always maintain a current release
 
+## Development and Release Workflow
+- **All future development work must be done on the `development` branch**
+- When ready to release from development:
+  1. Create an **experimental pre-release** from the development branch
+  2. Use version format: `x.y.z-beta.n` (e.g., `0.4.0-beta.1`) for experimental releases
+  3. The experimental release must be installable via HACS
+  4. Tag experimental releases with `pre-release` flag on GitHub
+- After user confirms the experimental release works:
+  1. Merge development branch into main
+  2. Create a normal release from main with standard version (e.g., `0.4.0`)
+  3. Update development branch to match main before starting new work
+- **Never commit directly to main** - all changes flow through development first
+- HACS users can install experimental releases by enabling "Show beta versions" in HACS settings
+
 ## Documentation Maintenance
 - A `how-it-works.md` file is maintained in the root directory to document the codebase architecture
 - This file is excluded from git commits (listed in .gitignore)
