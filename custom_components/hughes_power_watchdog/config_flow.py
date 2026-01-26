@@ -15,7 +15,7 @@ from homeassistant.components.bluetooth import (
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import FlowResult
 
-from .const import DEVICE_NAME_PMD, DEVICE_NAME_PWS, DOMAIN
+from .const import DEVICE_NAME_PREFIXES, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -107,4 +107,4 @@ class HughesPowerWatchdogConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Check if device name matches Hughes Power Watchdog pattern."""
         if name is None:
             return False
-        return name.startswith(DEVICE_NAME_PMD) or name.startswith(DEVICE_NAME_PWS)
+        return any(name.startswith(prefix) for prefix in DEVICE_NAME_PREFIXES)
