@@ -1,3 +1,3 @@
 """Version information for Hughes Power Watchdog integration."""
 
-VERSION = "0.3.5"
+VERSION = "0.4.0-beta.1"

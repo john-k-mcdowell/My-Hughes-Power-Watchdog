@@ -12,7 +12,7 @@ PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
 CONF_MAC_ADDRESS = "mac_address"
 
 # Device name prefixes that we look for
-DEVICE_NAME_PREFIXES = ["PMD", "PWS", "PMS"]
+DEVICE_NAME_PREFIXES = ["PMD", "PWS", "PMS", "WD"]
 
 # Update interval
 DEFAULT_SCAN_INTERVAL = 30  # seconds

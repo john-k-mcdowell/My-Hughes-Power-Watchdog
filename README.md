@@ -67,12 +67,24 @@ Based on the ESPHome implementation by spbrogan, tango2590, and makifoxgirl.
 
 ## Configuration
 
+### Automatic Discovery (Recommended)
+
 1. Go to **Settings** → **Devices & Services**
 2. Click **Add Integration**
 3. Search for "Hughes Power Watchdog"
 4. Follow the configuration prompts
 5. The integration will automatically discover nearby Hughes devices
 6. Select your device from the list
+
+### Manual Configuration
+
+If your device is not auto-discovered but is powered on and within Bluetooth range:
+
+1. Follow the steps above - when no devices are found, you'll be prompted for manual entry
+2. Enter the MAC address of your Hughes device (found in the Hughes mobile app or your Bluetooth settings)
+3. The integration will validate that the device is advertising and configure it
+
+> **Important:** If you successfully configure your device using manual MAC entry, please [open a GitHub issue](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues) and include your device model name. This helps us add it to the auto-discovery list for future users.
 
 ## Requirements
 

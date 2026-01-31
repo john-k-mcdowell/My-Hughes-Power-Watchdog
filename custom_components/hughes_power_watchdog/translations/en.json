@@ -11,11 +11,19 @@
       "bluetooth_confirm": {
         "title": "Confirm Hughes Power Watchdog",
         "description": "Do you want to set up {name}?"
+      },
+      "manual": {
+        "title": "Manual Configuration",
+        "description": "No Hughes devices were auto-discovered. Enter the MAC address of your device manually. If this works, please report your device model via GitHub Issues so it can be added to auto-discovery.",
+        "data": {
+          "address": "MAC Address"
+        }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to device",
-      "unknown": "Unexpected error occurred"
+      "unknown": "Unexpected error occurred",
+      "device_not_found": "Device not found. Ensure it is powered on and advertising via Bluetooth."
     },
     "abort": {
       "already_configured": "Device is already configured",

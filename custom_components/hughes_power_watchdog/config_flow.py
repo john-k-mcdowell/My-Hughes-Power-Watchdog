@@ -87,7 +87,8 @@ class HughesPowerWatchdogConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._discovered_devices[discovery_info.address] = discovery_info
 
         if not self._discovered_devices:
-            return self.async_abort(reason="no_devices_found")
+            # No auto-discovered devices, offer manual MAC entry
+            return await self.async_step_manual()
 
         data_schema = vol.Schema(
             {
@@ -101,6 +102,44 @@ class HughesPowerWatchdogConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         return self.async_show_form(step_id="user", data_schema=data_schema)
+
+    async def async_step_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle manual MAC address entry."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            address = user_input[CONF_ADDRESS].upper()
+            await self.async_set_unique_id(address, raise_on_progress=False)
+            self._abort_if_unique_id_configured()
+
+            # Look for the device in HA's Bluetooth discovered devices
+            discovery_info = None
+            for info in async_discovered_service_info(self.hass):
+                if info.address.upper() == address:
+                    discovery_info = info
+                    break
+
+            if discovery_info is None:
+                errors["base"] = "device_not_found"
+            else:
+                return self.async_create_entry(
+                    title=discovery_info.name or f"Hughes Power Watchdog ({address})",
+                    data={CONF_ADDRESS: address},
+                )
+
+        data_schema = vol.Schema(
+            {
+                vol.Required(CONF_ADDRESS): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="manual",
+            data_schema=data_schema,
+            errors=errors,
+        )
 
     @staticmethod
     def _is_hughes_device(name: str | None) -> bool:
