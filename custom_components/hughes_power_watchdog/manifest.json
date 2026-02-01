@@ -8,7 +8,7 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues",
   "requirements": ["bleak-retry-connector>=3.5.0"],
-  "version": "0.4.0-beta.2",
+  "version": "0.4.0-beta.3",
   "bluetooth": [
     {
       "local_name": "PMD*"
@@ -20,7 +20,7 @@
       "local_name": "PMS*"
     },
     {
-      "local_name": "WD-*"
+      "local_name": "WD_*"
     }
   ]
 }

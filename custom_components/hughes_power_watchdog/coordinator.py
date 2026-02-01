@@ -398,7 +398,13 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Chunk 1: Header + voltage/current/power/energy/error
         Chunk 2: Line identifier (Line 1 or Line 2)
         """
-        _LOGGER.debug("Received %d bytes from characteristic %s", len(data), sender)
+        _LOGGER.debug(
+            "[%s] Received %d bytes from characteristic %s: %s",
+            self.device_name,
+            len(data),
+            sender,
+            data.hex(),
+        )
 
         # Append data to buffer
         self._data_buffer.extend(data)
@@ -412,13 +418,35 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _parse_data_packet(self) -> None:
         """Parse complete 40-byte data packet."""
         if len(self._data_buffer) < TOTAL_DATA_SIZE:
-            _LOGGER.warning("Incomplete data packet: %d bytes", len(self._data_buffer))
+            _LOGGER.warning(
+                "[%s] Incomplete data packet: %d bytes",
+                self.device_name,
+                len(self._data_buffer),
+            )
             return
+
+        # Log complete raw buffer for debugging
+        _LOGGER.debug(
+            "[%s] Complete buffer (%d bytes): %s",
+            self.device_name,
+            len(self._data_buffer),
+            bytes(self._data_buffer).hex(),
+        )
 
         # Verify header - device sends multiple packet types, only process data packets
         header = bytes(self._data_buffer[BYTE_HEADER_START:BYTE_HEADER_END])
+        _LOGGER.debug(
+            "[%s] Header bytes: %s (expected: %s)",
+            self.device_name,
+            header.hex(),
+            HEADER_BYTES.hex(),
+        )
         if header != HEADER_BYTES:
-            _LOGGER.debug("Skipping non-data packet with header: %s", header)
+            _LOGGER.debug(
+                "[%s] Skipping non-data packet with header: %s",
+                self.device_name,
+                header.hex(),
+            )
             return
 
         # Extract voltage (big-endian int32 ÷ 10000)
@@ -441,8 +469,26 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         error_code = self._data_buffer[BYTE_ERROR_CODE]
         self._error_code = error_code
 
+        # Log parsed values for debugging
+        _LOGGER.debug(
+            "[%s] Parsed values - Voltage: %.2f V, Current: %.2f A, Power: %.2f W, Energy: %.2f kWh, Error: %d",
+            self.device_name,
+            voltage,
+            current,
+            power,
+            energy,
+            error_code,
+        )
+
         # Identify which line this data is for (bytes 37-39 in chunk 2)
         line_id = bytes(self._data_buffer[BYTE_LINE_ID_START:BYTE_LINE_ID_END])
+        _LOGGER.debug(
+            "[%s] Line ID bytes: %s (Line1=%s, Line2=%s)",
+            self.device_name,
+            line_id.hex(),
+            LINE_1_ID.hex(),
+            LINE_2_ID.hex(),
+        )
 
         if line_id == LINE_1_ID:
             self._line_1_data = {
