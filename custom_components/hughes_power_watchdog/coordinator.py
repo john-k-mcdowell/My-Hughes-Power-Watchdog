@@ -47,6 +47,12 @@ from .const import (
     WD_V5_BYTE_CURRENT_START,
     WD_V5_BYTE_ENERGY_END,
     WD_V5_BYTE_ENERGY_START,
+    WD_V5_BYTE_L2_CURRENT_END,
+    WD_V5_BYTE_L2_CURRENT_START,
+    WD_V5_BYTE_L2_POWER_END,
+    WD_V5_BYTE_L2_POWER_START,
+    WD_V5_BYTE_L2_VOLTAGE_END,
+    WD_V5_BYTE_L2_VOLTAGE_START,
     WD_V5_BYTE_MSG_TYPE,
     WD_V5_BYTE_POWER_END,
     WD_V5_BYTE_POWER_START,
@@ -57,7 +63,10 @@ from .const import (
     WD_V5_INIT_COMMAND,
     WD_V5_MIN_DATA_PACKET_SIZE,
     WD_V5_MIN_ENERGY_PACKET_SIZE,
+    WD_V5_MIN_L2_PACKET_SIZE,
     WD_V5_MSG_TYPE_DATA,
+    WD_V5_VOLTAGE_MAX,
+    WD_V5_VOLTAGE_MIN,
     # Shared constants
     CONNECTION_DELAY_REDUCTION,
     CONNECTION_IDLE_TIMEOUT,
@@ -201,7 +210,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @property
     def is_v5_protocol(self) -> bool:
-        """Return True if device uses the WD_V5 protocol (single-phase)."""
+        """Return True if device uses the WD_V5 protocol."""
         return self._is_v5_protocol
 
     async def _ensure_connected(self) -> BleakClient:
@@ -779,7 +788,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
             _LOGGER.info(
-                "[%s] WD_V5: Parsed - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh",
+                "[%s] WD_V5: Line 1 - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh",
                 self.device_name,
                 voltage,
                 current,
@@ -787,14 +796,52 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 energy,
             )
 
-            # WD_V5 appears to be single-line (30A) device
-            # Store as Line 1 data
+            # Store Line 1 data
             self._line_1_data = {
                 "voltage": voltage,
                 "current": current,
                 "power": power,
                 "energy": energy,
             }
+
+            # Try to decode Line 2 if packet is long enough
+            # For dual-phase V5 devices (if they exist), L2 data should be at bytes 25-36
+            self._line_2_data = None
+            if len(data) >= WD_V5_MIN_L2_PACKET_SIZE:
+                l2_voltage_bytes = data[WD_V5_BYTE_L2_VOLTAGE_START:WD_V5_BYTE_L2_VOLTAGE_END]
+                l2_voltage_raw = struct.unpack(">I", l2_voltage_bytes)[0]
+                l2_voltage = l2_voltage_raw / DATA_CONVERSION_FACTOR
+
+                # Check if L2 voltage is in valid range (indicates dual-phase device)
+                if WD_V5_VOLTAGE_MIN <= l2_voltage <= WD_V5_VOLTAGE_MAX:
+                    l2_current_bytes = data[WD_V5_BYTE_L2_CURRENT_START:WD_V5_BYTE_L2_CURRENT_END]
+                    l2_current_raw = struct.unpack(">I", l2_current_bytes)[0]
+                    l2_current = l2_current_raw / DATA_CONVERSION_FACTOR
+
+                    l2_power_bytes = data[WD_V5_BYTE_L2_POWER_START:WD_V5_BYTE_L2_POWER_END]
+                    l2_power_raw = struct.unpack(">I", l2_power_bytes)[0]
+                    l2_power = l2_power_raw / DATA_CONVERSION_FACTOR
+
+                    self._line_2_data = {
+                        "voltage": l2_voltage,
+                        "current": l2_current,
+                        "power": l2_power,
+                        "energy": 0,  # L2 energy position unknown
+                    }
+
+                    _LOGGER.info(
+                        "[%s] WD_V5: Line 2 - V=%.2fV I=%.2fA P=%.2fW (dual-phase detected)",
+                        self.device_name,
+                        l2_voltage,
+                        l2_current,
+                        l2_power,
+                    )
+                else:
+                    _LOGGER.debug(
+                        "[%s] WD_V5: L2 voltage %.2fV out of range, single-phase device",
+                        self.device_name,
+                        l2_voltage,
+                    )
 
             # Error code not yet decoded for V5
             self._error_code = 0

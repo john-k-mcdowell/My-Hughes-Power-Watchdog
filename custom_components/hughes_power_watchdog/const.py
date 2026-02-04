@@ -55,6 +55,7 @@ WD_V5_MSG_TYPE_STATUS = 0x02  # Status/info packet
 WD_V5_MSG_TYPE_CONTROL = 0x06  # Control/ack packet
 
 # WD_V5 Data packet byte positions (45-byte data packet)
+# Line 1 data
 WD_V5_BYTE_HEADER_START = 0
 WD_V5_BYTE_HEADER_END = 4
 WD_V5_BYTE_SEQUENCE = 5
@@ -68,10 +69,24 @@ WD_V5_BYTE_POWER_END = 21
 WD_V5_BYTE_ENERGY_START = 21
 WD_V5_BYTE_ENERGY_END = 25
 
+# Line 2 data (speculative - for dual-phase V5 devices if they exist)
+# Assuming same format as Line 1, starting at byte 25
+WD_V5_BYTE_L2_VOLTAGE_START = 25
+WD_V5_BYTE_L2_VOLTAGE_END = 29
+WD_V5_BYTE_L2_CURRENT_START = 29
+WD_V5_BYTE_L2_CURRENT_END = 33
+WD_V5_BYTE_L2_POWER_START = 33
+WD_V5_BYTE_L2_POWER_END = 37
+
 # WD_V5 minimum packet sizes
-WD_V5_MIN_DATA_PACKET_SIZE = 21  # Minimum for V/I/P extraction
-WD_V5_MIN_ENERGY_PACKET_SIZE = 25  # Minimum for V/I/P/E extraction
+WD_V5_MIN_DATA_PACKET_SIZE = 21  # Minimum for L1 V/I/P extraction
+WD_V5_MIN_ENERGY_PACKET_SIZE = 25  # Minimum for L1 V/I/P/E extraction
+WD_V5_MIN_L2_PACKET_SIZE = 37  # Minimum for L2 V/I/P extraction (speculative)
 WD_V5_FULL_DATA_PACKET_SIZE = 45  # Full packet with all fields
+
+# Voltage validation range (for detecting valid Line 2 data)
+WD_V5_VOLTAGE_MIN = 90.0  # Minimum reasonable voltage (V)
+WD_V5_VOLTAGE_MAX = 145.0  # Maximum reasonable voltage (V)
 
 # Legacy Data Protocol Constants
 # Device sends 40 bytes total in two 20-byte chunks

@@ -48,28 +48,18 @@ async def async_setup_entry(
         config_entry.entry_id
     ]
 
-    # Line 1 sensors (all devices)
     sensors = [
         HughesPowerWatchdogVoltageSensor(coordinator, SENSOR_VOLTAGE_L1, "Line 1"),
         HughesPowerWatchdogCurrentSensor(coordinator, SENSOR_CURRENT_L1, "Line 1"),
         HughesPowerWatchdogPowerSensor(coordinator, SENSOR_POWER_L1, "Line 1"),
-    ]
-
-    # Line 2 sensors (legacy devices only - V5 is single-phase)
-    if not coordinator.is_v5_protocol:
-        sensors.extend([
-            HughesPowerWatchdogVoltageSensor(coordinator, SENSOR_VOLTAGE_L2, "Line 2"),
-            HughesPowerWatchdogCurrentSensor(coordinator, SENSOR_CURRENT_L2, "Line 2"),
-            HughesPowerWatchdogPowerSensor(coordinator, SENSOR_POWER_L2, "Line 2"),
-            HughesPowerWatchdogPowerSensor(coordinator, SENSOR_COMBINED_POWER, "Combined"),
-        ])
-
-    # Common sensors (all devices)
-    sensors.extend([
+        HughesPowerWatchdogVoltageSensor(coordinator, SENSOR_VOLTAGE_L2, "Line 2"),
+        HughesPowerWatchdogCurrentSensor(coordinator, SENSOR_CURRENT_L2, "Line 2"),
+        HughesPowerWatchdogPowerSensor(coordinator, SENSOR_POWER_L2, "Line 2"),
+        HughesPowerWatchdogPowerSensor(coordinator, SENSOR_COMBINED_POWER, "Combined"),
         HughesPowerWatchdogEnergySensor(coordinator),
         HughesPowerWatchdogErrorCodeSensor(coordinator),
         HughesPowerWatchdogErrorTextSensor(coordinator),
-    ])
+    ]
 
     async_add_entities(sensors)
 
