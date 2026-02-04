@@ -45,6 +45,8 @@ from .const import (
     DEVICE_NAME_PREFIXES_V5,
     WD_V5_BYTE_CURRENT_END,
     WD_V5_BYTE_CURRENT_START,
+    WD_V5_BYTE_ENERGY_END,
+    WD_V5_BYTE_ENERGY_START,
     WD_V5_BYTE_MSG_TYPE,
     WD_V5_BYTE_POWER_END,
     WD_V5_BYTE_POWER_START,
@@ -54,6 +56,7 @@ from .const import (
     WD_V5_HEADER,
     WD_V5_INIT_COMMAND,
     WD_V5_MIN_DATA_PACKET_SIZE,
+    WD_V5_MIN_ENERGY_PACKET_SIZE,
     WD_V5_MSG_TYPE_DATA,
     # Shared constants
     CONNECTION_DELAY_REDUCTION,
@@ -744,6 +747,20 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             power_raw = struct.unpack(">I", power_bytes)[0]
             power = power_raw / DATA_CONVERSION_FACTOR
 
+            # Extract energy if packet is long enough (bytes 21-24)
+            energy = 0.0
+            if len(data) >= WD_V5_MIN_ENERGY_PACKET_SIZE:
+                energy_bytes = data[WD_V5_BYTE_ENERGY_START:WD_V5_BYTE_ENERGY_END]
+                energy_raw = struct.unpack(">I", energy_bytes)[0]
+                energy = energy_raw / DATA_CONVERSION_FACTOR
+                _LOGGER.debug(
+                    "[%s] WD_V5: Energy raw=%s(%d) = %.2f kWh",
+                    self.device_name,
+                    energy_bytes.hex(),
+                    energy_raw,
+                    energy,
+                )
+
             # Log parsed values with raw hex for debugging
             _LOGGER.debug(
                 "[%s] WD_V5: Raw values - V=%s(%d) I=%s(%d) P=%s(%d)",
@@ -757,11 +774,12 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
             _LOGGER.info(
-                "[%s] WD_V5: Parsed - V=%.2fV I=%.2fA P=%.2fW",
+                "[%s] WD_V5: Parsed - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh",
                 self.device_name,
                 voltage,
                 current,
                 power,
+                energy,
             )
 
             # WD_V5 appears to be single-line (30A) device
@@ -770,7 +788,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "voltage": voltage,
                 "current": current,
                 "power": power,
-                "energy": 0,  # Not yet decoded for V5
+                "energy": energy,
             }
 
             # Error code not yet decoded for V5

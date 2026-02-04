@@ -54,7 +54,7 @@ WD_V5_MSG_TYPE_DATA = 0x01  # Power data packet
 WD_V5_MSG_TYPE_STATUS = 0x02  # Status/info packet
 WD_V5_MSG_TYPE_CONTROL = 0x06  # Control/ack packet
 
-# WD_V5 Data packet byte positions
+# WD_V5 Data packet byte positions (45-byte data packet)
 WD_V5_BYTE_HEADER_START = 0
 WD_V5_BYTE_HEADER_END = 4
 WD_V5_BYTE_SEQUENCE = 5
@@ -65,9 +65,12 @@ WD_V5_BYTE_CURRENT_START = 13
 WD_V5_BYTE_CURRENT_END = 17
 WD_V5_BYTE_POWER_START = 17
 WD_V5_BYTE_POWER_END = 21
+WD_V5_BYTE_ENERGY_START = 21
+WD_V5_BYTE_ENERGY_END = 25
 
 # WD_V5 minimum packet sizes
 WD_V5_MIN_DATA_PACKET_SIZE = 21  # Minimum for V/I/P extraction
+WD_V5_MIN_ENERGY_PACKET_SIZE = 25  # Minimum for V/I/P/E extraction
 WD_V5_FULL_DATA_PACKET_SIZE = 45  # Full packet with all fields
 
 # Legacy Data Protocol Constants
