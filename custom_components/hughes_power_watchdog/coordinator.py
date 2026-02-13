@@ -608,6 +608,11 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             Dictionary of current sensor values (may be cached for Legacy).
         """
         try:
+            # Don't reconnect if monitoring was disabled
+            if not self._monitoring_enabled:
+                _LOGGER.debug("Monitoring disabled, skipping connection check for %s", self.address)
+                return self.data or {}
+
             # Don't interfere if commands are pending
             if not self._command_queue.empty():
                 _LOGGER.debug("Commands pending, skipping check for %s", self.address)
