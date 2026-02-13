@@ -1,11 +1,23 @@
 # Hughes Power Watchdog BLE Protocol Documentation
 
-This document describes the two Bluetooth Low Energy (BLE) protocols used by Hughes Power Watchdog devices: the **Legacy** protocol (PMD/PWS/PMS devices) and the **Modern V5** protocol (WD_V5 devices).
+This document describes the two Bluetooth Low Energy (BLE) protocols used by Hughes Power Watchdog devices:
+
+- **Legacy protocol** - Used by Gen 1 devices (Bluetooth only, model suffix EPO)
+- **V5 protocol** - Used by Gen 2 devices (WiFi + Bluetooth, model suffix EPOW)
+
+## Device Generations
+
+| Generation | Connectivity | Model Suffix | BLE Device Name | Mobile App |
+|-----------|-------------|-------------|----------------|-----------|
+| **Gen 1** | Bluetooth only | EPO | `PMD*`, `PWS*`, `PMS*` | [Power Watchdog Bluetooth ONLY](https://play.google.com/store/apps/details?id=com.hughes.epo) |
+| **Gen 2** | WiFi + Bluetooth | EPOW | `WD_V5_*` | [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) |
+
+The V5 protocol header `$yw@` corresponds to the `com.yw.watchdog` package name of the official Gen 2 WiFi app.
 
 ## Protocol Overview
 
-| Feature | Legacy (PMD/PWS/PMS) | Modern V5 (WD_V5) |
-|---------|---------------------|--------------------|
+| Feature | Gen 1 Legacy (PMD/PWS/PMS) | Gen 2 V5 (WD_V5) |
+|---------|---------------------------|-------------------|
 | Device Names | `PMD*`, `PWS*`, `PMS*` | `WD_V5_*` |
 | Service UUID | `0000ffe0-0000-1000-8000-00805f9b34fb` | `000000ff-0000-1000-8000-00805f9b34fb` |
 | TX Characteristic | `0000ffe2-0000-1000-8000-00805f9b34fb` | `0000ff01-0000-1000-8000-00805f9b34fb` |
@@ -27,9 +39,9 @@ If the service detection disagrees with the name-based guess, the service result
 
 ---
 
-## Legacy Protocol (PMD/PWS/PMS)
+## Gen 1 Legacy Protocol (PMD/PWS/PMS)
 
-Based on the ESPHome implementation by spbrogan, tango2590, and makifoxgirl.
+Used by Gen 1 Bluetooth-only devices (EPO models). Based on the ESPHome implementation by spbrogan, tango2590, and makifoxgirl.
 
 Source: https://github.com/spbrogan/esphome/tree/PolledSensor/esphome/components/hughes_power_watchdog
 
@@ -45,7 +57,7 @@ Source: https://github.com/spbrogan/esphome/tree/PolledSensor/esphome/components
 
 1. Connect to device via BLE
 2. Subscribe to notifications on the TX characteristic (`0000ffe2-...`)
-3. Device sends data packets as notifications
+3. Device streams data packets continuously (~1 second intervals)
 4. No initialization command needed
 
 ### Data Packet Structure (40 bytes)
@@ -72,7 +84,7 @@ The device sends 40 bytes in two 20-byte BLE notification chunks. The chunks are
 
 ### Dual-Line Support
 
-50A legacy devices (e.g., PWD50-EPD) send separate data packets for each line. Each packet includes a Line ID (bytes 37-39) to identify which line the data belongs to:
+50A Gen 1 devices (e.g., PWD50-EPD) send separate data packets for each line. Each packet includes a Line ID (bytes 37-39) to identify which line the data belongs to:
 
 - `00 00 00` = Line 1
 - `01 01 01` = Line 2
@@ -98,7 +110,7 @@ The device sends 40 bytes in two 20-byte BLE notification chunks. The chunks are
 import struct
 
 def decode_legacy_packet(data: bytes) -> dict:
-    """Decode a 40-byte legacy data packet."""
+    """Decode a 40-byte Gen 1 Legacy data packet."""
     if len(data) < 40:
         return None
 
@@ -128,9 +140,9 @@ def decode_legacy_packet(data: bytes) -> dict:
 
 ---
 
-## Modern V5 Protocol (WD_V5)
+## Gen 2 V5 Protocol (WD_V5)
 
-Reverse engineered from Bluetooth HCI captures of a WD_V5 device (device name: `WD_V5_9e9e6e20b9ed`).
+Used by Gen 2 WiFi + Bluetooth devices (EPOW models). Reverse engineered from Bluetooth HCI captures of a WD_V5 device (device name: `WD_V5_9e9e6e20b9ed`).
 
 ### GATT Profile
 
@@ -196,9 +208,9 @@ Three message types have been observed:
 
 For single-phase (30A) devices, only Line 1 data is valid. Bytes 25-36 contain non-voltage values for these devices.
 
-For potential dual-phase (50A) V5 devices, bytes 25-36 are assumed to follow the same format as Line 1. The integration detects dual-phase by checking if the decoded L2 voltage (bytes 25-28) falls within a valid range (90-145V). If it does, L2 current and power are also decoded from bytes 29-36.
+For potential dual-phase (50A) Gen 2 devices, bytes 25-36 are assumed to follow the same format as Line 1. The integration detects dual-phase by checking if the decoded L2 voltage (bytes 25-28) falls within a valid range (90-145V). If it does, L2 current and power are also decoded from bytes 29-36.
 
-This approach has **not yet been validated** against an actual dual-phase V5 device.
+This approach has **not yet been validated** against an actual dual-phase Gen 2 device.
 
 ### Status Packet (Type 0x02, 24-27 bytes)
 
@@ -250,7 +262,7 @@ From real device captures:
 import struct
 
 def decode_v5_packet(data: bytes) -> dict:
-    """Decode a Modern V5 data packet."""
+    """Decode a Gen 2 V5 data packet."""
     if len(data) < 21 or data[0:4] != b'$yw@' or data[6] != 0x01:
         return None
 
@@ -275,7 +287,7 @@ def decode_v5_packet(data: bytes) -> dict:
 
 ## What We Don't Know Yet
 
-### Legacy Protocol
+### Gen 1 Legacy Protocol
 
 | Item | Notes |
 |------|-------|
@@ -283,17 +295,17 @@ def decode_v5_packet(data: bytes) -> dict:
 | Additional packet types | Only the `01 03 20` header data packet is decoded |
 | Write commands | The RX characteristic exists but no command protocol is documented |
 
-### Modern V5 Protocol
+### Gen 2 V5 Protocol
 
 | Item | Notes |
 |------|-------|
 | Byte 4 | Always `0x01` - purpose unknown |
 | Bytes 7-8 | Always `0x0022` (34) - purpose unknown (packet length field?) |
 | Bytes 25-36 on single-phase devices | Values present but not voltage/current/power for these devices |
-| Bytes 25-36 on dual-phase devices | **Speculative** - assumed to be L2 V/I/P but no dual-phase V5 device has been tested |
+| Bytes 25-36 on dual-phase devices | **Speculative** - assumed to be L2 V/I/P but no dual-phase Gen 2 device has been tested |
 | Bytes 37-40 | Value ~6000, likely frequency (60.00 Hz) but unconfirmed |
 | Bytes 41-42 | Value 0 in all captures, likely error code but mapping unknown |
-| Error code mapping | V5 may use the same codes as legacy (0-7) or different codes |
+| Error code mapping | Gen 2 may use the same codes as Gen 1 (0-7) or different codes |
 | Status packet (0x02) payload | Contains "Er" string but full format unknown |
 | Control packet (0x06) payload | Handshake protocol not fully decoded |
 | Write command format | Beyond `!%!%,protocol,open,`, no commands documented |
@@ -301,9 +313,9 @@ def decode_v5_packet(data: bytes) -> dict:
 
 ### Testing Needed
 
-- **Dual-phase V5 device**: Need captures from a 50A V5 device to validate L2 byte positions
-- **V5 error states**: Need captures during fault conditions to decode error fields
-- **V5 frequency**: Need confirmation that bytes 37-40 represent AC frequency
+- **Dual-phase Gen 2 device**: Need captures from a 50A Gen 2 device to validate L2 byte positions
+- **Gen 2 error states**: Need captures during fault conditions to decode error fields
+- **Gen 2 frequency**: Need confirmation that bytes 37-40 represent AC frequency
 - **New device models**: Any future Hughes models may use either protocol or introduce a new one
 
 ---
@@ -315,14 +327,14 @@ The integration detects which protocol to use through two mechanisms:
 ### 1. Name-Based Detection (Initial Guess)
 
 At startup, the device name from the BLE advertisement is checked:
-- Starts with `PMD`, `PWS`, or `PMS` -> Legacy protocol
-- Starts with `WD_V5` -> Modern V5 protocol
+- Starts with `PMD`, `PWS`, or `PMS` -> Gen 1 Legacy protocol
+- Starts with `WD_V5` -> Gen 2 V5 protocol
 
 ### 2. Service-Based Detection (Confirmation)
 
 On the first BLE connection, the integration probes the device's advertised service UUIDs:
-- Contains `000000ff-...` -> Modern V5 protocol (confirmed)
-- Contains `0000ffe0-...` -> Legacy protocol (confirmed)
+- Contains `000000ff-...` -> Gen 2 V5 protocol (confirmed)
+- Contains `0000ffe0-...` -> Gen 1 Legacy protocol (confirmed)
 - Neither found -> Falls back to name-based guess with a warning
 
 This two-step approach ensures correct protocol selection even if a future device uses an unexpected name prefix but a known BLE service.

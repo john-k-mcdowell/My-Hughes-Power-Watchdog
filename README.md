@@ -6,19 +6,26 @@
 
 A Home Assistant custom integration for **Hughes Power Watchdog Surge Protectors** with Bluetooth connectivity.
 
-DOES NOT WORK WITH WiFi DEVICES.
-
-Adding this support is on the roadmap but will require assistance from users who have WiFi versions to help reverse engineer the protocols.
-
 > **100% Local Control** - This integration communicates directly with the Power Watchdog over Bluetooth Low Energy (BLE). No cloud services, no internet connection required, no data leaves your home.
+
+## Device Generations
+
+Hughes Power Watchdog devices come in two generations, each using a different BLE protocol:
+
+| Generation | Connectivity | Model Suffix | BLE Device Name | Mobile App | Example Models |
+|-----------|-------------|-------------|----------------|-----------|---------------|
+| **Gen 1** | Bluetooth only | EPO | `PMD*`, `PWS*`, `PMS*` | [Power Watchdog Bluetooth ONLY](https://play.google.com/store/apps/details?id=com.hughes.epo) | PWD30-EPO, PWD50-EPO, PWD50-EPD |
+| **Gen 2** | WiFi + Bluetooth | EPOW | `WD_V5_*` | [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) | PWD30EPOW, PWD50-EPOW |
+
+Both generations are portable or hardwired (-H suffix). This integration uses only the BLE connection, even on Gen 2 WiFi models.
 
 ## Tested Models
 
-| Model      | Protocol | Known Issues |
-| ---------- | -------- | ------------ |
-| PWD50-EPD  | Legacy   | None         |
-| PWD-VM-30A | Legacy   | None         |
-| PWD30EPOW  | V5       | None         |
+| Model | Generation | Protocol | Known Issues |
+|-------|-----------|----------|-------------|
+| PWD50-EPD | Gen 1 | Legacy | None |
+| PWD-VM-30A | Gen 1 | Legacy | None |
+| PWD30EPOW | Gen 2 | V5 | None |
 
 Please let me know via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues) if you have tested on other models so they can be included in the README.
 
@@ -29,15 +36,14 @@ Based on the ESPHome implementation by spbrogan, tango2590, and makifoxgirl.
 ## Features
 
 ### Supported Models
-- Hughes Power Watchdog (PWD) - any model with Bluetooth
-- Hughes Power Watch (PWS) - any model with Bluetooth (not tested yet)
-- Hughes Power Watchdog V5 (WD_V5_*) - Supported (v0.5.0+)
+- **Gen 1** - Hughes Power Watchdog (PMD/PWS/PMS) - Bluetooth only models
+- **Gen 2** - Hughes Power Watchdog (WD_V5) - WiFi + Bluetooth models (v0.5.0+)
 
 ### Real-Time Sensor Updates (v0.6.0)
 
 Starting with v0.6.0, the integration uses a **push-based model** for real-time sensor updates. The device streams data continuously via BLE notifications (~1 second intervals), and the integration subscribes once and pushes updates to Home Assistant entities as they arrive. This replaces the previous polling model that only captured data every 30 seconds.
 
-> **Note:** The real-time push model has been tested and verified on Legacy devices (PMD/PWS/PMS). The same approach has been applied to V5 devices but **has not yet been tested** due to lack of a V5 test device. If you have a V5 device, please enable debug logging and report any issues via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues).
+> **Note:** The real-time push model has been tested and verified on Gen 1 devices. The same approach has been applied to Gen 2 devices but **has not yet been tested** due to lack of a Gen 2 test device. If you have a Gen 2 (EPOW/WD_V5) device, please enable debug logging and report any issues via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues).
 
 ### Available Sensors
 - **Line 1 Voltage** (volts)
@@ -98,18 +104,18 @@ If your device is not auto-discovered but is powered on and within Bluetooth ran
 
 > **Important:** If you successfully configure your device using manual MAC entry, please [open a GitHub issue](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues) and include your device model name. This helps us add it to the auto-discovery list for future users.
 
-## V5 Protocol Support
+## Gen 2 (V5) Protocol Support
 
-Starting with v0.5.0, this integration supports the newer V5 devices (device names starting with `WD_V5_`, such as PWD30EPOW). These devices use a different Bluetooth protocol than the legacy PMD/PWS models.
+Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth models with device names starting with `WD_V5_`, such as PWD30EPOW). These devices use a different BLE protocol than the Gen 1 Bluetooth-only models. The protocol header `$yw@` corresponds to the "yw" identifier used in the official [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) app.
 
-**V5 Status:**
+**Gen 2 (V5) Status:**
 - Voltage, Current, Power readings - Working
 - Energy (kWh) - Working
-- Real-time push updates (v0.6.0) - **Not yet tested** (needs V5 device)
+- Real-time push updates (v0.6.0) - **Not yet tested** (needs Gen 2 device)
 - Error codes - Not yet implemented
 - Line 2 (50A dual-phase) - Not yet tested
 
-**If you have a V5 device**, please help us by:
+**If you have a Gen 2 device**, please help us by:
 1. Enabling debug logging (see below)
 2. Checking if the readings match your Hughes mobile app
 3. Reporting any issues via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues)
@@ -131,7 +137,7 @@ Then check your Home Assistant logs for entries prefixed with `[modern_V5]` or `
 
 - Home Assistant 2023.1.0 or newer
 - Bluetooth adapter/proxy in range of your Hughes Power Watchdog
-- Hughes Power Watchdog with Bluetooth (PMD, PWS, or WD_V5 model)
+- Hughes Power Watchdog with Bluetooth (Gen 1 or Gen 2)
 
 ## Troubleshooting
 
