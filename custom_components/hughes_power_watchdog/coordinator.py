@@ -920,7 +920,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "power": power,
                     "energy": 0,
                 }
-                _LOGGER.info(
+                _LOGGER.debug(
                     "[%s] modern_V5: Line 2 packet - V=%.2fV I=%.2fA P=%.2fW (line-id mode)",
                     self.device_name,
                     voltage,
@@ -935,7 +935,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "energy": energy,
                 }
                 if is_line_1_packet:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "[%s] modern_V5: Line 1 packet - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh (line-id mode)",
                         self.device_name,
                         voltage,
@@ -944,7 +944,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         energy,
                     )
                 else:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "[%s] modern_V5: Line 1 - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh",
                         self.device_name,
                         voltage,
@@ -960,7 +960,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 embedded_line_2 = self._decode_modern_v5_embedded_line2(data)
             if embedded_line_2:
                 self._line_2_data = embedded_line_2
-                _LOGGER.info(
+                _LOGGER.debug(
                     "[%s] modern_V5: Line 2 - V=%.2fV I=%.2fA P=%.2fW (decoded block)",
                     self.device_name,
                     embedded_line_2["voltage"],
