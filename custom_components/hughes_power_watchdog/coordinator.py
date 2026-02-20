@@ -881,8 +881,9 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             power_raw = struct.unpack(">I", power_bytes)[0]
             power = power_raw / DATA_CONVERSION_FACTOR
 
-            # Extract energy if packet is long enough (bytes 21-24)
-            energy = 0.0
+            # Extract energy if packet is long enough (bytes 21-24).
+            # Some packet variants omit this field; keep prior values when absent.
+            energy: float | None = None
             if len(data) >= MODERN_V5_MIN_ENERGY_PACKET_SIZE:
                 energy_bytes = data[MODERN_V5_BYTE_ENERGY_START:MODERN_V5_BYTE_ENERGY_END]
                 energy_raw = struct.unpack(">I", energy_bytes)[0]
@@ -914,43 +915,50 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             is_line_1_packet = packet_line_id == LINE_1_ID
 
             if is_line_2_packet:
+                line_2_energy = energy
+                if line_2_energy is None and self._line_2_data:
+                    line_2_energy = self._line_2_data.get("energy")
                 self._line_2_data = {
                     "voltage": voltage,
                     "current": current,
                     "power": power,
-                    "energy": 0,
+                    "energy": line_2_energy,
                 }
                 _LOGGER.debug(
-                    "[%s] modern_V5: Line 2 packet - V=%.2fV I=%.2fA P=%.2fW (line-id mode)",
+                    "[%s] modern_V5: Line 2 packet - V=%.2fV I=%.2fA P=%.2fW E=%s (line-id mode)",
                     self.device_name,
                     voltage,
                     current,
                     power,
+                    f"{line_2_energy:.2f}kWh" if line_2_energy is not None else "n/a",
                 )
             else:
+                line_1_energy = energy
+                if line_1_energy is None and self._line_1_data:
+                    line_1_energy = self._line_1_data.get("energy")
                 self._line_1_data = {
                     "voltage": voltage,
                     "current": current,
                     "power": power,
-                    "energy": energy,
+                    "energy": line_1_energy,
                 }
                 if is_line_1_packet:
                     _LOGGER.debug(
-                        "[%s] modern_V5: Line 1 packet - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh (line-id mode)",
+                        "[%s] modern_V5: Line 1 packet - V=%.2fV I=%.2fA P=%.2fW E=%s (line-id mode)",
                         self.device_name,
                         voltage,
                         current,
                         power,
-                        energy,
+                        f"{line_1_energy:.2f}kWh" if line_1_energy is not None else "n/a",
                     )
                 else:
                     _LOGGER.debug(
-                        "[%s] modern_V5: Line 1 - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh",
+                        "[%s] modern_V5: Line 1 - V=%.2fV I=%.2fA P=%.2fW E=%s",
                         self.device_name,
                         voltage,
                         current,
                         power,
-                        energy,
+                        f"{line_1_energy:.2f}kWh" if line_1_energy is not None else "n/a",
                     )
 
             # Try to decode embedded Line 2 block (bytes 25-36). This supports
@@ -990,7 +998,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _decode_modern_v5_dual_block_line2(
         self, data: bytes | bytearray
-    ) -> dict[str, float] | None:
+    ) -> dict[str, float | None] | None:
         """Decode Line 2 for 79-byte V5 packets with dual 34-byte data blocks.
 
         Observed on Gen 2 50A devices:
@@ -1033,10 +1041,12 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "voltage": l2_voltage,
             "current": l2_current,
             "power": l2_power,
-            "energy": 0,
+            "energy": None,
         }
 
-    def _decode_modern_v5_embedded_line2(self, data: bytes | bytearray) -> dict[str, float] | None:
+    def _decode_modern_v5_embedded_line2(
+        self, data: bytes | bytearray
+    ) -> dict[str, float | None] | None:
         """Decode Line 2 from bytes 25-36 in V5 packets using robust fallbacks."""
         if len(data) < MODERN_V5_MIN_L2_PACKET_SIZE:
             return None
@@ -1084,7 +1094,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "voltage": voltage,
                     "current": current,
                     "power": power,
-                    "energy": 0,
+                    "energy": None,
                 }
                 _LOGGER.debug(
                     "[%s] modern_V5: Embedded L2 candidate %s accepted V=%.2f I=%.2f P=%.2f",
@@ -1106,7 +1116,12 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data[SENSOR_VOLTAGE_L1] = self._line_1_data.get("voltage")
             data[SENSOR_CURRENT_L1] = self._line_1_data.get("current")
             data[SENSOR_POWER_L1] = self._line_1_data.get("power")
-            data[SENSOR_TOTAL_POWER] = self._line_1_data.get("energy")
+            total_energy = self._line_1_data.get("energy")
+            if self._line_2_data:
+                line_2_energy = self._line_2_data.get("energy")
+                if total_energy is not None and line_2_energy is not None:
+                    total_energy = total_energy + line_2_energy
+            data[SENSOR_TOTAL_POWER] = total_energy
 
         # Line 2 data (50A units only)
         if self._line_2_data:
