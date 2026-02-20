@@ -21,6 +21,9 @@
     },
     {
       "local_name": "WD_V5*"
+    },
+    {
+      "local_name": "WD_E5*"
     }
   ]
 }
