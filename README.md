@@ -160,6 +160,9 @@ Based on the original ESPHome implementation by:
 - [tango2590](https://github.com/tango2590/Hughes-Power-Watchdog)
 - SergeantBort
 
+### Contributors
+- [IAmTheMitchell](https://github.com/IAmTheMitchell) — Gen 2 WD_E5 device support, V5 50A Line 2 sensor fix, protocol documentation for dual-block packet format
+
 ## License
 
 MIT License
