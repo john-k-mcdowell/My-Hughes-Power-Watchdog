@@ -15,7 +15,7 @@ Hughes Power Watchdog devices come in two generations, each using a different BL
 | Generation | Connectivity | Model Suffix | BLE Device Name | Mobile App | Example Models |
 |-----------|-------------|-------------|----------------|-----------|---------------|
 | **Gen 1** | Bluetooth only | EPO | `PMD*`, `PWS*`, `PMS*` | [Power Watchdog Bluetooth ONLY](https://play.google.com/store/apps/details?id=com.hughes.epo) | PWD30-EPO, PWD50-EPO, PWD50-EPD |
-| **Gen 2** | WiFi + Bluetooth | EPOW | `WD_V5_*` | [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) | PWD30EPOW, PWD50-EPOW |
+| **Gen 2** | WiFi + Bluetooth | EPOW | `WD_V5_*`, `WD_E5_*` | [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) | PWD30EPOW, PWD50-EPOW |
 
 Both generations are portable or hardwired (-H suffix). This integration uses only the BLE connection, even on Gen 2 WiFi models.
 
@@ -26,6 +26,7 @@ Both generations are portable or hardwired (-H suffix). This integration uses on
 | PWD50-EPD | Gen 1 | Legacy | None |
 | PWD-VM-30A | Gen 1 | Legacy | None |
 | PWD30EPOW | Gen 2 | V5 | None |
+| PWD50EPOW | Gen 2 | V5 | None |
 
 Please let me know via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues) if you have tested on other models so they can be included in the README.
 
@@ -37,13 +38,13 @@ Based on the ESPHome implementation by spbrogan, tango2590, and makifoxgirl.
 
 ### Supported Models
 - **Gen 1** - Hughes Power Watchdog (PMD/PWS/PMS) - Bluetooth only models
-- **Gen 2** - Hughes Power Watchdog (WD_V5) - WiFi + Bluetooth models (v0.5.0+)
+- **Gen 2** - Hughes Power Watchdog (WD_V5/WD_E5) - WiFi + Bluetooth models (v0.5.0+)
 
 ### Real-Time Sensor Updates (v0.6.0)
 
 Starting with v0.6.0, the integration uses a **push-based model** for real-time sensor updates. The device streams data continuously via BLE notifications (~1 second intervals), and the integration subscribes once and pushes updates to Home Assistant entities as they arrive. This replaces the previous polling model that only captured data every 30 seconds.
 
-> **Note:** The real-time push model has been tested and verified on Gen 1 devices. The same approach has been applied to Gen 2 devices but **has not yet been tested** due to lack of a Gen 2 test device. If you have a Gen 2 (EPOW/WD_V5) device, please enable debug logging and report any issues via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues).
+> **Note:** The real-time push model has been validated on both Gen 1 and Gen 2 devices. If you encounter issues with a specific model, please enable debug logging and report any issues via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues).
 
 ### Available Sensors
 - **Line 1 Voltage** (volts)
@@ -106,14 +107,14 @@ If your device is not auto-discovered but is powered on and within Bluetooth ran
 
 ## Gen 2 (V5) Protocol Support
 
-Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth models with device names starting with `WD_V5_`, such as PWD30EPOW). These devices use a different BLE protocol than the Gen 1 Bluetooth-only models. The protocol header `$yw@` corresponds to the "yw" identifier used in the official [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) app.
+Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth models with device names starting with `WD_V5_` or `WD_E5_`, such as PWD30EPOW/PWD50EPOW). These devices use a different BLE protocol than the Gen 1 Bluetooth-only models. The protocol header `$yw@` corresponds to the "yw" identifier used in the official [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) app.
 
 **Gen 2 (V5) Status:**
 - Voltage, Current, Power readings - Working
 - Energy (kWh) - Working
-- Real-time push updates (v0.6.0) - **Not yet tested** (needs Gen 2 device)
+- Real-time push updates (v0.6.0) - Working
 - Error codes - Not yet implemented
-- Line 2 (50A dual-phase) - Not yet tested
+- Line 2 (50A dual-phase) - Working
 
 **If you have a Gen 2 device**, please help us by:
 1. Enabling debug logging (see below)
