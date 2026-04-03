@@ -318,7 +318,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.debug("Successfully connected to %s", self.address)
                     return self._client
 
-                except BleakError as err:
+                except Exception as err:  # pylint: disable=broad-except
                     last_error = err
                     _LOGGER.debug(
                         "Connection attempt %d failed: %s",
@@ -400,6 +400,9 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             int(stale_time),
                         )
                         await self._disconnect()
+                        # Trigger an immediate reconnect attempt rather than
+                        # waiting up to CONNECTION_CHECK_INTERVAL seconds
+                        self.hass.async_create_task(self.async_request_refresh())
 
             except asyncio.CancelledError:
                 _LOGGER.debug("Connection health monitor cancelled for %s", self.address)

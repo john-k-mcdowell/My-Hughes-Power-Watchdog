@@ -12,7 +12,7 @@
   "requirements": [
     "bleak-retry-connector>=3.5.0"
   ],
-  "version": "0.6.1",
+  "version": "0.6.2",
   "bluetooth": [
     {
       "local_name": "PMD*"
