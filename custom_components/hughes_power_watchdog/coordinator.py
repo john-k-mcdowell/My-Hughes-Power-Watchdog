@@ -664,10 +664,37 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Append data to buffer
         self._data_buffer.extend(data)
 
-        # Check if we have a complete 40-byte packet
-        if len(self._data_buffer) >= TOTAL_DATA_SIZE:
+        # Process all complete packets in the buffer, re-syncing on the
+        # header pattern to recover from lost or corrupted notifications.
+        while len(self._data_buffer) >= TOTAL_DATA_SIZE:
+            # Look for the header pattern to align to packet boundary
+            header_pos = self._data_buffer.find(HEADER_BYTES)
+
+            if header_pos < 0:
+                # No header found anywhere — discard entire buffer
+                _LOGGER.debug(
+                    "[%s] Legacy: No header found in %d-byte buffer, discarding",
+                    self.device_name,
+                    len(self._data_buffer),
+                )
+                self._data_buffer = bytearray()
+                break
+
+            if header_pos > 0:
+                # Discard bytes before the header to re-synchronize
+                _LOGGER.debug(
+                    "[%s] Legacy: Discarding %d bytes before header to re-sync",
+                    self.device_name,
+                    header_pos,
+                )
+                self._data_buffer = self._data_buffer[header_pos:]
+
+            # Need a full 40-byte packet starting from the header
+            if len(self._data_buffer) < TOTAL_DATA_SIZE:
+                break
+
             self._parse_data_packet_legacy()
-            self._data_buffer = bytearray()
+            self._data_buffer = self._data_buffer[TOTAL_DATA_SIZE:]
 
             # Push updated data to all entities immediately
             if self._line_1_data:
