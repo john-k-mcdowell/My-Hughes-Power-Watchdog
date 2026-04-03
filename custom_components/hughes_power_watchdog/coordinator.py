@@ -608,6 +608,10 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         CONNECTION_CHECK_INTERVAL to verify the subscription is still
         active and reconnect if needed.
 
+        Skips the connection check if notifications have been received
+        recently, avoiding unnecessary BLE proxy interactions that can
+        cause HCI disconnect/reconnect churn on ESPHome proxies.
+
         Returns:
             Dictionary of current sensor values (cached, updated by push).
         """
@@ -622,7 +626,27 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.debug("Commands pending, skipping check for %s", self.address)
                 return self.data or {}
 
-            # Ensure subscription/connection is active
+            # Skip connection check if notifications are flowing normally.
+            # The health monitor handles the stale-notification case separately.
+            notifications_active = (
+                self._legacy_notifications_active
+                or self._modern_v5_notifications_active
+            )
+            if notifications_active and self._last_notification_time:
+                since_last = time.time() - self._last_notification_time
+                if since_last < CONNECTION_CHECK_INTERVAL:
+                    _LOGGER.debug(
+                        "[%s] Notifications healthy (%.1fs ago), skipping connection check",
+                        self.device_name,
+                        since_last,
+                    )
+                    return self._build_data_dict()
+
+            # No recent notifications — ensure subscription/connection is active
+            _LOGGER.debug(
+                "[%s] No recent notifications, running connection check",
+                self.device_name,
+            )
             await self._request_device_status()
 
             # Return current data (for Legacy, this is continuously
