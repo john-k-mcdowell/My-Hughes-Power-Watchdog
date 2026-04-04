@@ -8,9 +8,6 @@ NAME = "Hughes Power Watchdog"
 # Platforms
 PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
 
-# Configuration
-CONF_MAC_ADDRESS = "mac_address"
-
 # Device name prefixes that we look for
 # Legacy devices: PMD, PWS, PMS (use old protocol)
 # Modern V5 devices: WD_V5 / WD_E5 (use new protocol)
@@ -38,10 +35,8 @@ LEGACY_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
 LEGACY_CHARACTERISTIC_UUID_TX = "0000ffe2-0000-1000-8000-00805f9b34fb"  # Device transmits data
 LEGACY_CHARACTERISTIC_UUID_RX = "0000fff5-0000-1000-8000-00805f9b34fb"  # Device receives commands
 
-# Backward-compatible aliases
-SERVICE_UUID = LEGACY_SERVICE_UUID
+# Backward-compatible alias (used in coordinator for notification subscription)
 CHARACTERISTIC_UUID_TX = LEGACY_CHARACTERISTIC_UUID_TX
-CHARACTERISTIC_UUID_RX = LEGACY_CHARACTERISTIC_UUID_RX
 
 # =============================================================================
 # MODERN V5 PROTOCOL (WD_V5_* / WD_E5_* devices)

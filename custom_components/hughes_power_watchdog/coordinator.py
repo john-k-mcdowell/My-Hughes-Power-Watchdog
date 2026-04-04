@@ -7,7 +7,8 @@ import logging
 import struct
 import time
 from datetime import timedelta
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from bleak import BleakClient
 from bleak.exc import BleakError
@@ -15,7 +16,6 @@ from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo
@@ -66,6 +66,7 @@ from .const import (
     MODERN_V5_MIN_ENERGY_PACKET_SIZE,
     MODERN_V5_MIN_L2_PACKET_SIZE,
     MODERN_V5_MSG_TYPE_DATA,
+    MODERN_V5_VOLTAGE_MAX,
     MODERN_V5_VOLTAGE_MIN,
     # Legacy protocol UUIDs
     LEGACY_SERVICE_UUID,
@@ -94,7 +95,6 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-
 class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Class to manage Hughes Power Watchdog data via BLE.
 
@@ -115,7 +115,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.config_entry = config_entry
 
         # Protocol detection - initially based on device name, confirmed by service discovery
-        self._is_modern_v5_protocol: bool | None = None
+        self._is_modern_v5_protocol: bool = False
         self._protocol_detected_by_service: bool = False
 
         # Initial guess based on device name
@@ -159,16 +159,14 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Connection management
         self._client: BleakClient | None = None
         self._connection_lock = asyncio.Lock()
-        self._last_activity_time: float = 0
 
         # Command queue for future two-way communication
         self._command_queue: asyncio.Queue = asyncio.Queue()
         self._command_worker_task: asyncio.Task | None = None
         self._health_monitor_task: asyncio.Task | None = None
 
-        # Adaptive retry delays
+        # Adaptive retry delay
         self._connect_delay: float = 0.0
-        self._read_delay: float = 0.0
 
         # Monitoring state (for entity availability)
         self._monitoring_enabled: bool = True
@@ -313,7 +311,6 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._connect_delay = max(
                         self._connect_delay * CONNECTION_DELAY_REDUCTION, 0
                     )
-                    self._last_activity_time = time.time()
 
                     _LOGGER.debug("Successfully connected to %s", self.address)
                     return self._client
@@ -527,8 +524,6 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Wait briefly for initial data
                 await asyncio.sleep(DATA_COLLECTION_TIMEOUT)
 
-            self._last_activity_time = time.time()
-
         except BleakError as err:
             _LOGGER.debug("[%s] Legacy: Error setting up subscription: %s", self.device_name, err)
             self._legacy_notifications_active = False
@@ -588,8 +583,6 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 # Wait briefly for initial data
                 await asyncio.sleep(DATA_COLLECTION_TIMEOUT)
-
-            self._last_activity_time = time.time()
 
         except BleakError as err:
             _LOGGER.debug(
@@ -673,7 +666,6 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._notification_count += 1
         interval = now - self._last_notification_time if self._last_notification_time else 0
         self._last_notification_time = now
-        self._last_activity_time = now
 
         _LOGGER.debug(
             "[%s] Legacy: Notification #%d (+%.2fs) %d bytes from %s: %s",
@@ -833,7 +825,6 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._notification_count += 1
         interval = now - self._last_notification_time if self._last_notification_time else 0
         self._last_notification_time = now
-        self._last_activity_time = now
 
         _LOGGER.debug(
             "[%s] modern_V5: Notification #%d (+%.2fs) %d bytes from %s: %s",
@@ -1078,7 +1069,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         l2_power = struct.unpack(">I", l2_power_bytes)[0] / DATA_CONVERSION_FACTOR
         l2_energy = struct.unpack(">I", l2_energy_bytes)[0] / DATA_CONVERSION_FACTOR
 
-        if not (MODERN_V5_VOLTAGE_MIN <= l2_voltage <= 145.0):
+        if not (MODERN_V5_VOLTAGE_MIN <= l2_voltage <= MODERN_V5_VOLTAGE_MAX):
             return None
         if not (0.0 <= l2_current <= 80.0):
             return None
