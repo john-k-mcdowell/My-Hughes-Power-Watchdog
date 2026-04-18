@@ -34,6 +34,10 @@ async def async_setup_entry(
         config_entry.entry_id
     ]
 
+    # All binary sensors are V2-only (these fields don't exist in V1 protocol)
+    if not coordinator.is_v2_protocol:
+        return
+
     async_add_entities([
         HughesPowerWatchdogRelayStatusSensor(coordinator),
         HughesPowerWatchdogBoostModeSensor(coordinator),

@@ -65,9 +65,14 @@ async def async_setup_entry(
         HughesPowerWatchdogErrorCodeSensor(coordinator),
         HughesPowerWatchdogErrorTextSensor(coordinator),
         HughesPowerWatchdogFrequencySensor(coordinator),
-        HughesPowerWatchdogOutputVoltageSensor(coordinator),
-        HughesPowerWatchdogTemperatureSensor(coordinator),
     ]
+
+    # V2-only sensors (these fields don't exist in the V1 protocol)
+    if coordinator.is_v2_protocol:
+        sensors.extend([
+            HughesPowerWatchdogOutputVoltageSensor(coordinator),
+            HughesPowerWatchdogTemperatureSensor(coordinator),
+        ])
 
     async_add_entities(sensors)
 
