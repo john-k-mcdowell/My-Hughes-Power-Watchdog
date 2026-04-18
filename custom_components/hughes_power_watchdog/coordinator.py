@@ -1183,7 +1183,13 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data[SENSOR_VOLTAGE_L1] = self._line_1_data.get("voltage")
             data[SENSOR_CURRENT_L1] = self._line_1_data.get("current")
             data[SENSOR_POWER_L1] = self._line_1_data.get("power")
-            data[SENSOR_TOTAL_POWER] = self._line_1_data.get("energy")
+            # Cumulative energy: sum L1 + L2 for 50A devices
+            total_energy = self._line_1_data.get("energy")
+            if self._line_2_data:
+                line_2_energy = self._line_2_data.get("energy")
+                if total_energy is not None and line_2_energy is not None:
+                    total_energy = total_energy + line_2_energy
+            data[SENSOR_TOTAL_POWER] = total_energy
 
         # Line 2 data (50A units only)
         if self._line_2_data:
