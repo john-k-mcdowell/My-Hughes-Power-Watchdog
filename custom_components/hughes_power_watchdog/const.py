@@ -6,17 +6,17 @@ DOMAIN = "hughes_power_watchdog"
 NAME = "Hughes Power Watchdog"
 
 # Platforms
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
 
 # Configuration
 CONF_MAC_ADDRESS = "mac_address"
 
 # Device name prefixes that we look for
-# Legacy devices: PMD, PWS, PMS (use old protocol)
-# Modern V5 devices: WD_V5 (use new protocol)
-DEVICE_NAME_PREFIXES = ["PMD", "PWS", "PMS", "WD_V5"]
-DEVICE_NAME_PREFIXES_LEGACY = ["PMD", "PWS", "PMS"]
-DEVICE_NAME_PREFIXES_MODERN_V5 = ["WD_V5"]
+# V1 devices: PMD, PWS, PMS (use V1/legacy protocol)
+# V2 devices: WD_V5 / WD_E5 / WD_V6 / WD_E6 (use V2 protocol)
+DEVICE_NAME_PREFIXES = ["PMD", "PWS", "PMS", "WD_V5", "WD_E5", "WD_V6", "WD_E6"]
+DEVICE_NAME_PREFIXES_V1 = ["PMD", "PWS", "PMS"]
+DEVICE_NAME_PREFIXES_V2 = ["WD_V5", "WD_E5", "WD_V6", "WD_E6"]
 
 # Connection health check interval (coordinator watchdog, not data polling)
 # Actual data arrives via push notifications from the device (~1s intervals)
@@ -30,69 +30,108 @@ CONNECTION_DELAY_REDUCTION = 0.75  # Multiply delay by this on success
 DATA_COLLECTION_TIMEOUT = 3  # seconds - wait for device to send data chunks
 
 # =============================================================================
-# LEGACY PROTOCOL (PMD/PWS/PMS devices)
+# V1 PROTOCOL (PMD/PWS/PMS devices)
 # =============================================================================
 # BLE Service and Characteristic UUIDs (from ESPHome implementation)
 # Source: https://github.com/spbrogan/esphome/tree/PolledSensor/esphome/components/hughes_power_watchdog
-LEGACY_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
-LEGACY_CHARACTERISTIC_UUID_TX = "0000ffe2-0000-1000-8000-00805f9b34fb"  # Device transmits data
-LEGACY_CHARACTERISTIC_UUID_RX = "0000fff5-0000-1000-8000-00805f9b34fb"  # Device receives commands
+V1_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
+V1_CHARACTERISTIC_UUID_TX = "0000ffe2-0000-1000-8000-00805f9b34fb"  # Device transmits data
+V1_CHARACTERISTIC_UUID_RX = "0000fff5-0000-1000-8000-00805f9b34fb"  # Device receives commands
 
 # Backward-compatible aliases
-SERVICE_UUID = LEGACY_SERVICE_UUID
-CHARACTERISTIC_UUID_TX = LEGACY_CHARACTERISTIC_UUID_TX
-CHARACTERISTIC_UUID_RX = LEGACY_CHARACTERISTIC_UUID_RX
+LEGACY_SERVICE_UUID = V1_SERVICE_UUID
+CHARACTERISTIC_UUID_TX = V1_CHARACTERISTIC_UUID_TX
 
 # =============================================================================
-# MODERN V5 PROTOCOL (WD_V5_* devices)
+# V2 PROTOCOL (WD_V5_* / WD_E5_* / WD_V6_* / WD_E6_* devices)
 # =============================================================================
-# Reverse engineered from Bluetooth captures - see docs/protocol.md
-MODERN_V5_SERVICE_UUID = "000000ff-0000-1000-8000-00805f9b34fb"
-MODERN_V5_CHARACTERISTIC_UUID = "0000ff01-0000-1000-8000-00805f9b34fb"  # Bidirectional
+# Reverse engineered from Bluetooth captures and Android app source - see docs/protocol.md
+V2_SERVICE_UUID = "000000ff-0000-1000-8000-00805f9b34fb"
+V2_CHARACTERISTIC_UUID = "0000ff01-0000-1000-8000-00805f9b34fb"  # Bidirectional
 
-# Modern V5 Protocol framing
-MODERN_V5_HEADER = b"$yw@"  # 0x24797740
-MODERN_V5_END_MARKER = b"q!"  # 0x7121
-MODERN_V5_INIT_COMMAND = b"!%!%,protocol,open,"
+# V2 Protocol framing
+V2_HEADER = b"$yw@"  # 0x24797740
+V2_END_MARKER = b"q!"  # 0x7121
+V2_INIT_COMMAND = b"!%!%,protocol,open,"
 
-# Modern V5 Message types (byte 6 in packet)
-MODERN_V5_MSG_TYPE_DATA = 0x01  # Power data packet
-MODERN_V5_MSG_TYPE_STATUS = 0x02  # Status/info packet
-MODERN_V5_MSG_TYPE_CONTROL = 0x06  # Control/ack packet
+# V2 Message types (byte 6 in packet)
+V2_MSG_TYPE_DATA = 0x01  # DLReport - Live sensor data
+V2_MSG_TYPE_ERROR = 0x02  # ErrorReport - Historical error logs
+V2_MSG_TYPE_CONTROL = 0x06  # SetTime / control acknowledgment
 
-# Modern V5 Data packet byte positions (45-byte data packet)
-# Line 1 data
-MODERN_V5_BYTE_HEADER_START = 0
-MODERN_V5_BYTE_HEADER_END = 4
-MODERN_V5_BYTE_SEQUENCE = 5
-MODERN_V5_BYTE_MSG_TYPE = 6
-MODERN_V5_BYTE_VOLTAGE_START = 9
-MODERN_V5_BYTE_VOLTAGE_END = 13
-MODERN_V5_BYTE_CURRENT_START = 13
-MODERN_V5_BYTE_CURRENT_END = 17
-MODERN_V5_BYTE_POWER_START = 17
-MODERN_V5_BYTE_POWER_END = 21
-MODERN_V5_BYTE_ENERGY_START = 21
-MODERN_V5_BYTE_ENERGY_END = 25
+# V2 Data packet byte positions
+# Header fields
+V2_BYTE_HEADER_START = 0
+V2_BYTE_HEADER_END = 4
+V2_BYTE_VERSION = 4
+V2_BYTE_SEQUENCE = 5
+V2_BYTE_MSG_TYPE = 6
+V2_BYTE_DATA_LEN_START = 7
+V2_BYTE_DATA_LEN_END = 9
 
-# Line 2 data (speculative - for dual-phase V5 devices if they exist)
-# Assuming same format as Line 1, starting at byte 25
-MODERN_V5_BYTE_L2_VOLTAGE_START = 25
-MODERN_V5_BYTE_L2_VOLTAGE_END = 29
-MODERN_V5_BYTE_L2_CURRENT_START = 29
-MODERN_V5_BYTE_L2_CURRENT_END = 33
-MODERN_V5_BYTE_L2_POWER_START = 33
-MODERN_V5_BYTE_L2_POWER_END = 37
+# Line 1 data (payload starts at byte 9)
+V2_BYTE_VOLTAGE_START = 9
+V2_BYTE_VOLTAGE_END = 13
+V2_BYTE_CURRENT_START = 13
+V2_BYTE_CURRENT_END = 17
+V2_BYTE_POWER_START = 17
+V2_BYTE_POWER_END = 21
+V2_BYTE_ENERGY_START = 21
+V2_BYTE_ENERGY_END = 25
 
-# Modern V5 minimum packet sizes
-MODERN_V5_MIN_DATA_PACKET_SIZE = 21  # Minimum for L1 V/I/P extraction
-MODERN_V5_MIN_ENERGY_PACKET_SIZE = 25  # Minimum for L1 V/I/P/E extraction
-MODERN_V5_MIN_L2_PACKET_SIZE = 37  # Minimum for L2 V/I/P extraction (speculative)
-MODERN_V5_FULL_DATA_PACKET_SIZE = 45  # Full packet with all fields
+# Single-block extended fields (bytes 25-42)
+V2_BYTE_TEMP1_START = 25  # Internal/unknown
+V2_BYTE_TEMP1_END = 29
+V2_BYTE_OUTPUT_VOLTAGE_START = 29
+V2_BYTE_OUTPUT_VOLTAGE_END = 33
+V2_BYTE_BACKLIGHT = 33
+V2_BYTE_NEUTRAL_DETECTION = 34
+V2_BYTE_BOOST_MODE = 35
+V2_BYTE_TEMPERATURE = 36
+V2_BYTE_FREQUENCY_START = 37
+V2_BYTE_FREQUENCY_END = 41
+V2_BYTE_ERROR_CODE = 41
+V2_BYTE_RELAY_STATUS = 42
+
+# V2 minimum packet sizes
+V2_MIN_DATA_PACKET_SIZE = 21  # Minimum for L1 V/I/P extraction
+V2_MIN_ENERGY_PACKET_SIZE = 25  # Minimum for L1 V/I/P/E extraction
+V2_MIN_EXTENDED_PACKET_SIZE = 43  # Minimum for all single-block fields
+V2_FULL_DATA_PACKET_SIZE = 45  # Full single-block packet with end marker
+
+# V2 dual-block layout (50A devices, 79-byte packets)
+# Block 2 (Line 2) starts at byte 43, same field layout as Block 1
+V2_DUAL_BLOCK_L2_VOLTAGE_START = 43
+V2_DUAL_BLOCK_L2_VOLTAGE_END = 47
+V2_DUAL_BLOCK_L2_CURRENT_START = 47
+V2_DUAL_BLOCK_L2_CURRENT_END = 51
+V2_DUAL_BLOCK_L2_POWER_START = 51
+V2_DUAL_BLOCK_L2_POWER_END = 55
+V2_DUAL_BLOCK_L2_ENERGY_START = 55
+V2_DUAL_BLOCK_L2_ENERGY_END = 59
+# Block 2 extended fields (bytes 59-76)
+V2_DUAL_BLOCK_L2_TEMP1_START = 59
+V2_DUAL_BLOCK_L2_TEMP1_END = 63
+V2_DUAL_BLOCK_L2_OUTPUT_VOLTAGE_START = 63
+V2_DUAL_BLOCK_L2_OUTPUT_VOLTAGE_END = 67
+V2_DUAL_BLOCK_L2_BACKLIGHT = 67
+V2_DUAL_BLOCK_L2_NEUTRAL_DETECTION = 68
+V2_DUAL_BLOCK_L2_BOOST_MODE = 69
+V2_DUAL_BLOCK_L2_TEMPERATURE = 70
+V2_DUAL_BLOCK_L2_FREQUENCY_START = 71
+V2_DUAL_BLOCK_L2_FREQUENCY_END = 75
+V2_DUAL_BLOCK_L2_ERROR_CODE = 75
+V2_DUAL_BLOCK_L2_RELAY_STATUS = 76
 
 # Voltage validation range (for detecting valid Line 2 data)
-MODERN_V5_VOLTAGE_MIN = 90.0  # Minimum reasonable voltage (V)
-MODERN_V5_VOLTAGE_MAX = 145.0  # Maximum reasonable voltage (V)
+V2_VOLTAGE_MIN = 90.0  # Minimum reasonable voltage (V)
+V2_VOLTAGE_MAX = 145.0  # Maximum reasonable voltage (V)
+
+# V1 frequency field in chunk 2 (bytes 31-34)
+V1_BYTE_FREQUENCY_START = 31
+V1_BYTE_FREQUENCY_END = 35
+# Frequency conversion factor (int32 / 100 = Hz)
+FREQUENCY_CONVERSION_FACTOR = 100
 
 # Legacy Data Protocol Constants
 # Device sends 40 bytes total in two 20-byte chunks
@@ -136,12 +175,18 @@ SENSOR_COMBINED_POWER = "combined_power"
 SENSOR_TOTAL_POWER = "total_power"
 SENSOR_ERROR_CODE = "error_code"
 SENSOR_ERROR_TEXT = "error_text"
+SENSOR_FREQUENCY = "frequency"
+SENSOR_OUTPUT_VOLTAGE = "output_voltage"
+SENSOR_TEMPERATURE = "temperature"
+SENSOR_RELAY_STATUS = "relay_status"
+SENSOR_BOOST_MODE = "boost_mode"
+SENSOR_NEUTRAL_DETECTION = "neutral_detection"
 
 # Switch keys
 SWITCH_MONITORING = "monitoring"
 
-# Error code mapping (from Hughes Power Watchdog official documentation)
-# Source: PWD-3050EPO Installation & Operating Instructions manual
+# Error code mapping (from Hughes Power Watchdog official documentation and app source)
+# Source: PWD-3050EPO Installation & Operating Instructions manual, V1/V2 app source
 ERROR_CODES = {
     0: "No Error",
     1: "Line 1 voltage exceeded 132V or dropped below 104V",
@@ -153,4 +198,6 @@ ERROR_CODES = {
     7: "Ground connection lost",
     8: "No neutral circuit detected",
     9: "Surge protection capacity depleted - replace surge board",
+    11: "Frequency error (F1)",
+    12: "Frequency error (F2)",
 }

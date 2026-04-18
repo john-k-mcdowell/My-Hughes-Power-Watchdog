@@ -22,7 +22,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
-    # Legacy protocol constants
+    # V1 protocol constants
     BYTE_CURRENT_END,
     BYTE_CURRENT_START,
     BYTE_ENERGY_END,
@@ -41,34 +41,57 @@ from .const import (
     LINE_1_ID,
     LINE_2_ID,
     TOTAL_DATA_SIZE,
-    # Modern V5 protocol constants
-    DEVICE_NAME_PREFIXES_MODERN_V5,
-    MODERN_V5_SERVICE_UUID,
-    MODERN_V5_BYTE_CURRENT_END,
-    MODERN_V5_BYTE_CURRENT_START,
-    MODERN_V5_BYTE_ENERGY_END,
-    MODERN_V5_BYTE_ENERGY_START,
-    MODERN_V5_BYTE_L2_CURRENT_END,
-    MODERN_V5_BYTE_L2_CURRENT_START,
-    MODERN_V5_BYTE_L2_POWER_END,
-    MODERN_V5_BYTE_L2_POWER_START,
-    MODERN_V5_BYTE_L2_VOLTAGE_END,
-    MODERN_V5_BYTE_L2_VOLTAGE_START,
-    MODERN_V5_BYTE_MSG_TYPE,
-    MODERN_V5_BYTE_POWER_END,
-    MODERN_V5_BYTE_POWER_START,
-    MODERN_V5_BYTE_VOLTAGE_END,
-    MODERN_V5_BYTE_VOLTAGE_START,
-    MODERN_V5_CHARACTERISTIC_UUID,
-    MODERN_V5_HEADER,
-    MODERN_V5_INIT_COMMAND,
-    MODERN_V5_MIN_DATA_PACKET_SIZE,
-    MODERN_V5_MIN_ENERGY_PACKET_SIZE,
-    MODERN_V5_MIN_L2_PACKET_SIZE,
-    MODERN_V5_MSG_TYPE_DATA,
-    MODERN_V5_VOLTAGE_MAX,
-    MODERN_V5_VOLTAGE_MIN,
-    # Legacy protocol UUIDs
+    V1_BYTE_FREQUENCY_START,
+    V1_BYTE_FREQUENCY_END,
+    # V2 protocol constants
+    DEVICE_NAME_PREFIXES_V2,
+    V2_SERVICE_UUID,
+    V2_BYTE_CURRENT_END,
+    V2_BYTE_CURRENT_START,
+    V2_BYTE_ENERGY_END,
+    V2_BYTE_ENERGY_START,
+    V2_BYTE_MSG_TYPE,
+    V2_BYTE_POWER_END,
+    V2_BYTE_POWER_START,
+    V2_BYTE_VOLTAGE_END,
+    V2_BYTE_VOLTAGE_START,
+    V2_BYTE_OUTPUT_VOLTAGE_START,
+    V2_BYTE_OUTPUT_VOLTAGE_END,
+    V2_BYTE_NEUTRAL_DETECTION,
+    V2_BYTE_BOOST_MODE,
+    V2_BYTE_TEMPERATURE,
+    V2_BYTE_FREQUENCY_START,
+    V2_BYTE_FREQUENCY_END,
+    V2_BYTE_ERROR_CODE,
+    V2_BYTE_RELAY_STATUS,
+    V2_CHARACTERISTIC_UUID,
+    V2_HEADER,
+    V2_INIT_COMMAND,
+    V2_MIN_DATA_PACKET_SIZE,
+    V2_MIN_ENERGY_PACKET_SIZE,
+    V2_MIN_EXTENDED_PACKET_SIZE,
+    V2_MSG_TYPE_DATA,
+    V2_VOLTAGE_MAX,
+    V2_VOLTAGE_MIN,
+    # V2 dual-block constants
+    V2_DUAL_BLOCK_L2_VOLTAGE_START,
+    V2_DUAL_BLOCK_L2_VOLTAGE_END,
+    V2_DUAL_BLOCK_L2_CURRENT_START,
+    V2_DUAL_BLOCK_L2_CURRENT_END,
+    V2_DUAL_BLOCK_L2_POWER_START,
+    V2_DUAL_BLOCK_L2_POWER_END,
+    V2_DUAL_BLOCK_L2_ENERGY_START,
+    V2_DUAL_BLOCK_L2_ENERGY_END,
+    V2_DUAL_BLOCK_L2_OUTPUT_VOLTAGE_START,
+    V2_DUAL_BLOCK_L2_OUTPUT_VOLTAGE_END,
+    V2_DUAL_BLOCK_L2_NEUTRAL_DETECTION,
+    V2_DUAL_BLOCK_L2_BOOST_MODE,
+    V2_DUAL_BLOCK_L2_TEMPERATURE,
+    V2_DUAL_BLOCK_L2_FREQUENCY_START,
+    V2_DUAL_BLOCK_L2_FREQUENCY_END,
+    V2_DUAL_BLOCK_L2_ERROR_CODE,
+    V2_DUAL_BLOCK_L2_RELAY_STATUS,
+    # V1 protocol UUIDs
     LEGACY_SERVICE_UUID,
     # Shared constants
     CONNECTION_CHECK_INTERVAL,
@@ -77,6 +100,7 @@ from .const import (
     CONNECTION_MAX_DELAY,
     DATA_COLLECTION_TIMEOUT,
     DATA_CONVERSION_FACTOR,
+    FREQUENCY_CONVERSION_FACTOR,
     DOMAIN,
     NOTIFICATION_STALE_TIMEOUT,
     SENSOR_COMBINED_POWER,
@@ -89,6 +113,12 @@ from .const import (
     SENSOR_TOTAL_POWER,
     SENSOR_VOLTAGE_L1,
     SENSOR_VOLTAGE_L2,
+    SENSOR_FREQUENCY,
+    SENSOR_OUTPUT_VOLTAGE,
+    SENSOR_TEMPERATURE,
+    SENSOR_RELAY_STATUS,
+    SENSOR_BOOST_MODE,
+    SENSOR_NEUTRAL_DETECTION,
     ERROR_CODES,
 )
 
@@ -99,7 +129,7 @@ _LOGGER = logging.getLogger(__name__)
 class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Class to manage Hughes Power Watchdog data via BLE.
 
-    Both Legacy and V5 devices stream data continuously via BLE
+    Both V1 and V2 devices stream data continuously via BLE
     notifications. The coordinator subscribes once and pushes updates
     to entities in real-time. The update_interval acts as a connection
     watchdog, reconnecting if the subscription drops.
@@ -116,21 +146,21 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.config_entry = config_entry
 
         # Protocol detection - initially based on device name, confirmed by service discovery
-        self._is_modern_v5_protocol: bool | None = None
+        self._is_v2_protocol: bool | None = None
         self._protocol_detected_by_service: bool = False
 
         # Initial guess based on device name
-        if self._detect_modern_v5_by_name(self.device_name):
-            self._is_modern_v5_protocol = True
+        if self._detect_v2_by_name(self.device_name):
+            self._is_v2_protocol = True
             _LOGGER.info(
-                "[%s] Detected modern_V5 protocol for device %s (by name)",
+                "[%s] Detected V2 protocol for device %s (by name prefix)",
                 self.device_name,
                 self.address,
             )
         else:
-            self._is_modern_v5_protocol = False
+            self._is_v2_protocol = False
             _LOGGER.info(
-                "[%s] Detected legacy protocol for device %s (by name)",
+                "[%s] Detected V1 protocol for device %s (by name prefix)",
                 self.device_name,
                 self.address,
             )
@@ -147,13 +177,19 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._line_1_data: dict[str, float] = {}
         self._line_2_data: dict[str, float] = {}
         self._error_code: int = 0
+        self._frequency: float | None = None
+        self._output_voltage: float | None = None
+        self._temperature: int | None = None
+        self._relay_status: int | None = None
+        self._boost_mode: int | None = None
+        self._neutral_detection: int | None = None
 
-        # Modern V5 specific: track if initialization command has been sent
-        self._modern_v5_initialized: bool = False
+        # V2 specific: track if initialization command has been sent
+        self._v2_initialized: bool = False
 
         # Persistent subscription tracking (both protocols use push model)
-        self._legacy_notifications_active: bool = False
-        self._modern_v5_notifications_active: bool = False
+        self._v1_notifications_active: bool = False
+        self._v2_notifications_active: bool = False
         self._notification_count: int = 0
         self._last_notification_time: float = 0
 
@@ -178,16 +214,27 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._start_background_tasks()
 
     @staticmethod
-    def _detect_modern_v5_by_name(device_name: str) -> bool:
-        """Detect if device uses modern V5 protocol based on name.
+    def _detect_v2_by_name(device_name: str) -> bool:
+        """Detect if device uses V2 protocol based on name.
 
         Args:
             device_name: The device name from Bluetooth advertisement.
 
         Returns:
-            True if device name suggests modern V5 protocol, False otherwise.
+            True if device name suggests V2 protocol, False otherwise.
         """
-        return any(device_name.startswith(prefix) for prefix in DEVICE_NAME_PREFIXES_MODERN_V5)
+        matched = None
+        for prefix in DEVICE_NAME_PREFIXES_V2:
+            if device_name.startswith(prefix):
+                matched = prefix
+                break
+        if matched:
+            _LOGGER.debug(
+                "Device name '%s' matched V2 prefix '%s'",
+                device_name,
+                matched,
+            )
+        return matched is not None
 
     async def _detect_protocol_by_service(self, client: BleakClient) -> bool:
         """Detect protocol by probing BLE service UUIDs on the connected device.
@@ -196,7 +243,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             client: Connected BleakClient instance.
 
         Returns:
-            True if modern V5 protocol detected, False for legacy.
+            True if V2 protocol detected, False for V1.
         """
         try:
             services = client.services
@@ -205,16 +252,16 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "[%s] Available services: %s", self.device_name, service_uuids
             )
 
-            if MODERN_V5_SERVICE_UUID.lower() in service_uuids:
+            if V2_SERVICE_UUID.lower() in service_uuids:
                 _LOGGER.info(
-                    "[%s] Detected modern_V5 protocol by service UUID",
+                    "[%s] Confirmed V2 protocol by service UUID",
                     self.device_name,
                 )
                 return True
 
             if LEGACY_SERVICE_UUID.lower() in service_uuids:
                 _LOGGER.info(
-                    "[%s] Detected legacy protocol by service UUID",
+                    "[%s] Confirmed V1 protocol by service UUID",
                     self.device_name,
                 )
                 return False
@@ -224,14 +271,14 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "using name-based detection",
                 self.device_name,
             )
-            return self._detect_modern_v5_by_name(self.device_name)
+            return self._detect_v2_by_name(self.device_name)
         except Exception as err:
             _LOGGER.warning(
                 "[%s] Error detecting protocol by service: %s",
                 self.device_name,
                 err,
             )
-            return self._detect_modern_v5_by_name(self.device_name)
+            return self._detect_v2_by_name(self.device_name)
 
     def _start_background_tasks(self) -> None:
         """Start background worker tasks."""
@@ -248,7 +295,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information for the Hughes Power Watchdog."""
-        model = "Power Watchdog V5" if self._is_modern_v5_protocol else "Power Watchdog"
+        model = "Power Watchdog V2" if self._is_v2_protocol else "Power Watchdog"
         return DeviceInfo(
             identifiers={(DOMAIN, self.address)},
             name=self.device_name,
@@ -263,9 +310,9 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self._monitoring_enabled
 
     @property
-    def is_modern_v5_protocol(self) -> bool:
-        """Return True if device uses the modern V5 protocol."""
-        return self._is_modern_v5_protocol
+    def is_v2_protocol(self) -> bool:
+        """Return True if device uses the V2 protocol."""
+        return self._is_v2_protocol
 
     async def _ensure_connected(self) -> BleakClient:
         """Ensure we have an active BLE connection.
@@ -354,12 +401,12 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self._client and self._client.is_connected:
                 # Explicitly unsubscribe before disconnecting
                 try:
-                    if self._legacy_notifications_active:
+                    if self._v1_notifications_active:
                         await self._client.stop_notify(CHARACTERISTIC_UUID_TX)
-                        _LOGGER.debug("[%s] Unsubscribed from Legacy notifications", self.device_name)
-                    elif self._modern_v5_notifications_active:
-                        await self._client.stop_notify(MODERN_V5_CHARACTERISTIC_UUID)
-                        _LOGGER.debug("[%s] Unsubscribed from V5 notifications", self.device_name)
+                        _LOGGER.debug("[%s] Unsubscribed from V1 notifications", self.device_name)
+                    elif self._v2_notifications_active:
+                        await self._client.stop_notify(V2_CHARACTERISTIC_UUID)
+                        _LOGGER.debug("[%s] Unsubscribed from V2 notifications", self.device_name)
                 except BleakError as err:
                     _LOGGER.debug("[%s] Error unsubscribing: %s (continuing with disconnect)", self.device_name, err)
 
@@ -370,9 +417,9 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.debug("Error disconnecting from %s: %s", self.address, err)
                 finally:
                     self._client = None
-                    self._modern_v5_initialized = False
-                    self._modern_v5_notifications_active = False
-                    self._legacy_notifications_active = False
+                    self._v2_initialized = False
+                    self._v2_notifications_active = False
+                    self._v1_notifications_active = False
 
     async def _monitor_connection_health(self) -> None:
         """Monitor connection health and detect stale notifications.
@@ -387,8 +434,8 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 # Only check if we expect notifications to be flowing
                 notifications_active = (
-                    self._legacy_notifications_active
-                    or self._modern_v5_notifications_active
+                    self._v1_notifications_active
+                    or self._v2_notifications_active
                 )
                 if notifications_active and self._last_notification_time:
                     stale_time = time.time() - self._last_notification_time
@@ -481,26 +528,26 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self._protocol_detected_by_service:
             client = await self._ensure_connected()
             detected = await self._detect_protocol_by_service(client)
-            if detected != self._is_modern_v5_protocol:
+            if detected != self._is_v2_protocol:
                 _LOGGER.warning(
                     "[%s] Protocol mismatch: name suggested %s, "
                     "service detected %s. Using service detection.",
                     self.device_name,
-                    "modern_V5" if self._is_modern_v5_protocol else "legacy",
-                    "modern_V5" if detected else "legacy",
+                    "V2" if self._is_v2_protocol else "V1",
+                    "V2" if detected else "V1",
                 )
-                self._is_modern_v5_protocol = detected
+                self._is_v2_protocol = detected
             self._protocol_detected_by_service = True
 
-        if self._is_modern_v5_protocol:
-            await self._request_device_status_modern_v5()
+        if self._is_v2_protocol:
+            await self._request_device_status_v2()
         else:
-            await self._request_device_status_legacy()
+            await self._request_device_status_v1()
 
-    async def _request_device_status_legacy(self) -> None:
-        """Ensure Legacy device has an active persistent notification subscription.
+    async def _request_device_status_v1(self) -> None:
+        """Ensure V1 device has an active persistent notification subscription.
 
-        Legacy devices stream data continuously at ~1s intervals. This method
+        V1 devices stream data continuously at ~1s intervals. This method
         subscribes once and keeps the subscription active. Data is pushed to
         entities via async_set_updated_data() in the notification handler.
         Called by the connection watchdog to reconnect if needed.
@@ -508,19 +555,19 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             client = await self._ensure_connected()
 
-            if not self._legacy_notifications_active:
+            if not self._v1_notifications_active:
                 self._data_buffer = bytearray()
 
                 _LOGGER.info(
-                    "[%s] Legacy: Subscribing to persistent notifications on %s",
+                    "[%s] V1: Subscribing to persistent notifications on %s",
                     self.device_name,
                     CHARACTERISTIC_UUID_TX,
                 )
 
                 await client.start_notify(
-                    CHARACTERISTIC_UUID_TX, self._notification_handler_legacy
+                    CHARACTERISTIC_UUID_TX, self._notification_handler_v1
                 )
-                self._legacy_notifications_active = True
+                self._v1_notifications_active = True
 
                 # Wait briefly for initial data
                 await asyncio.sleep(DATA_COLLECTION_TIMEOUT)
@@ -528,13 +575,13 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._last_activity_time = time.time()
 
         except BleakError as err:
-            _LOGGER.debug("[%s] Legacy: Error setting up subscription: %s", self.device_name, err)
-            self._legacy_notifications_active = False
+            _LOGGER.debug("[%s] V1: Error setting up subscription: %s", self.device_name, err)
+            self._v1_notifications_active = False
 
-    async def _request_device_status_modern_v5(self) -> None:
-        """Ensure V5 device has an active persistent notification subscription.
+    async def _request_device_status_v2(self) -> None:
+        """Ensure V2 device has an active persistent notification subscription.
 
-        V5 protocol requires an initialization command on first connection,
+        V2 protocol requires an initialization command on first connection,
         then the device streams data continuously. This method subscribes
         once and keeps the subscription active. Data is pushed to entities
         via async_set_updated_data() in the notification handler.
@@ -544,45 +591,45 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             client = await self._ensure_connected()
 
             # Send initialization command if not yet done
-            if not self._modern_v5_initialized:
+            if not self._v2_initialized:
                 self._data_buffer = bytearray()
                 _LOGGER.debug(
-                    "[%s] modern_V5: Sending init command: %s",
+                    "[%s] V2: Sending init command: %s",
                     self.device_name,
-                    MODERN_V5_INIT_COMMAND.hex(),
+                    V2_INIT_COMMAND.hex(),
                 )
                 try:
                     await client.write_gatt_char(
-                        MODERN_V5_CHARACTERISTIC_UUID,
-                        MODERN_V5_INIT_COMMAND,
+                        V2_CHARACTERISTIC_UUID,
+                        V2_INIT_COMMAND,
                         response=False,
                     )
-                    self._modern_v5_initialized = True
+                    self._v2_initialized = True
                     _LOGGER.info(
-                        "[%s] modern_V5: Initialization command sent successfully",
+                        "[%s] V2: Initialization command sent successfully",
                         self.device_name,
                     )
                 except BleakError as err:
                     _LOGGER.error(
-                        "[%s] modern_V5: Failed to send init command: %s",
+                        "[%s] V2: Failed to send init command: %s",
                         self.device_name,
                         err,
                     )
                     raise
 
-            if not self._modern_v5_notifications_active:
+            if not self._v2_notifications_active:
                 self._data_buffer = bytearray()
 
                 _LOGGER.info(
-                    "[%s] modern_V5: Subscribing to persistent notifications on %s",
+                    "[%s] V2: Subscribing to persistent notifications on %s",
                     self.device_name,
-                    MODERN_V5_CHARACTERISTIC_UUID,
+                    V2_CHARACTERISTIC_UUID,
                 )
 
                 await client.start_notify(
-                    MODERN_V5_CHARACTERISTIC_UUID, self._notification_handler_modern_v5
+                    V2_CHARACTERISTIC_UUID, self._notification_handler_v2
                 )
-                self._modern_v5_notifications_active = True
+                self._v2_notifications_active = True
 
                 # Wait briefly for initial data
                 await asyncio.sleep(DATA_COLLECTION_TIMEOUT)
@@ -591,12 +638,12 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         except BleakError as err:
             _LOGGER.debug(
-                "[%s] modern_V5: Error setting up subscription: %s",
+                "[%s] V2: Error setting up subscription: %s",
                 self.device_name,
                 err,
             )
-            self._modern_v5_initialized = False
-            self._modern_v5_notifications_active = False
+            self._v2_initialized = False
+            self._v2_notifications_active = False
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Connection watchdog - ensures subscription is active.
@@ -623,8 +670,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Ensure subscription/connection is active
             await self._request_device_status()
 
-            # Return current data (for Legacy, this is continuously
-            # updated by the notification handler)
+            # Return current data (continuously updated by the notification handler)
             return self._build_data_dict()
 
         except BleakError as err:
@@ -633,11 +679,11 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(f"Unexpected error: {err}") from err
 
     # =========================================================================
-    # LEGACY PROTOCOL HANDLERS (PMD/PWS/PMS)
+    # V1 PROTOCOL HANDLERS (PMD/PWS/PMS)
     # =========================================================================
 
-    def _notification_handler_legacy(self, sender: int, data: bytearray) -> None:
-        """Handle BLE notification data from legacy Hughes device.
+    def _notification_handler_v1(self, sender: int, data: bytearray) -> None:
+        """Handle BLE notification data from V1 (legacy) Hughes device.
 
         Device streams data continuously at ~1s intervals. Each cycle
         sends 40 bytes in two 20-byte chunks. After parsing a complete
@@ -650,7 +696,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_activity_time = now
 
         _LOGGER.debug(
-            "[%s] Legacy: Notification #%d (+%.2fs) %d bytes from %s: %s",
+            "[%s] V1: Notification #%d (+%.2fs) %d bytes from %s: %s",
             self.device_name,
             self._notification_count,
             interval,
@@ -664,18 +710,18 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Check if we have a complete 40-byte packet
         if len(self._data_buffer) >= TOTAL_DATA_SIZE:
-            self._parse_data_packet_legacy()
+            self._parse_data_packet_v1()
             self._data_buffer = bytearray()
 
             # Push updated data to all entities immediately
             if self._line_1_data:
                 self.async_set_updated_data(self._build_data_dict())
 
-    def _parse_data_packet_legacy(self) -> None:
-        """Parse complete 40-byte legacy data packet."""
+    def _parse_data_packet_v1(self) -> None:
+        """Parse complete 40-byte V1 data packet."""
         if len(self._data_buffer) < TOTAL_DATA_SIZE:
             _LOGGER.warning(
-                "[%s] Legacy: Incomplete data packet: %d bytes",
+                "[%s] V1: Incomplete data packet: %d bytes",
                 self.device_name,
                 len(self._data_buffer),
             )
@@ -683,7 +729,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Log complete raw buffer for debugging
         _LOGGER.debug(
-            "[%s] Legacy: Complete buffer (%d bytes): %s",
+            "[%s] V1: Complete buffer (%d bytes): %s",
             self.device_name,
             len(self._data_buffer),
             bytes(self._data_buffer).hex(),
@@ -692,32 +738,32 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Verify header - device sends multiple packet types, only process data packets
         header = bytes(self._data_buffer[BYTE_HEADER_START:BYTE_HEADER_END])
         _LOGGER.debug(
-            "[%s] Legacy: Header bytes: %s (expected: %s)",
+            "[%s] V1: Header bytes: %s (expected: %s)",
             self.device_name,
             header.hex(),
             HEADER_BYTES.hex(),
         )
         if header != HEADER_BYTES:
             _LOGGER.debug(
-                "[%s] Legacy: Skipping non-data packet with header: %s",
+                "[%s] V1: Skipping non-data packet with header: %s",
                 self.device_name,
                 header.hex(),
             )
             return
 
-        # Extract voltage (big-endian int32 ÷ 10000)
+        # Extract voltage (big-endian int32 / 10000)
         voltage_bytes = self._data_buffer[BYTE_VOLTAGE_START:BYTE_VOLTAGE_END]
         voltage = struct.unpack(">i", voltage_bytes)[0] / DATA_CONVERSION_FACTOR
 
-        # Extract current (big-endian int32 ÷ 10000)
+        # Extract current (big-endian int32 / 10000)
         current_bytes = self._data_buffer[BYTE_CURRENT_START:BYTE_CURRENT_END]
         current = struct.unpack(">i", current_bytes)[0] / DATA_CONVERSION_FACTOR
 
-        # Extract power (big-endian int32 ÷ 10000)
+        # Extract power (big-endian int32 / 10000)
         power_bytes = self._data_buffer[BYTE_POWER_START:BYTE_POWER_END]
         power = struct.unpack(">i", power_bytes)[0] / DATA_CONVERSION_FACTOR
 
-        # Extract cumulative energy (big-endian int32 ÷ 10000)
+        # Extract cumulative energy (big-endian int32 / 10000)
         energy_bytes = self._data_buffer[BYTE_ENERGY_START:BYTE_ENERGY_END]
         energy = struct.unpack(">i", energy_bytes)[0] / DATA_CONVERSION_FACTOR
 
@@ -725,21 +771,35 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         error_code = self._data_buffer[BYTE_ERROR_CODE]
         self._error_code = error_code
 
+        # Extract frequency from chunk 2 (bytes 31-34, int32 / 100)
+        freq_bytes = self._data_buffer[V1_BYTE_FREQUENCY_START:V1_BYTE_FREQUENCY_END]
+        freq_raw = struct.unpack(">i", freq_bytes)[0]
+        frequency = freq_raw / FREQUENCY_CONVERSION_FACTOR
+        self._frequency = frequency
+        _LOGGER.debug(
+            "[%s] V1: Frequency raw=%s(%d) = %.2f Hz",
+            self.device_name,
+            freq_bytes.hex(),
+            freq_raw,
+            frequency,
+        )
+
         # Log parsed values for debugging
         _LOGGER.debug(
-            "[%s] Legacy: Parsed - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh Err=%d",
+            "[%s] V1: Parsed - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh Err=%d Freq=%.2fHz",
             self.device_name,
             voltage,
             current,
             power,
             energy,
             error_code,
+            frequency,
         )
 
         # Identify which line this data is for (bytes 37-39 in chunk 2)
         line_id = bytes(self._data_buffer[BYTE_LINE_ID_START:BYTE_LINE_ID_END])
         _LOGGER.debug(
-            "[%s] Legacy: Line ID bytes: %s (Line1=%s, Line2=%s)",
+            "[%s] V1: Line ID bytes: %s (Line1=%s, Line2=%s)",
             self.device_name,
             line_id.hex(),
             LINE_1_ID.hex(),
@@ -753,7 +813,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "power": power,
                 "energy": energy,
             }
-            _LOGGER.debug("[%s] Legacy: Line 1 data: %s", self.device_name, self._line_1_data)
+            _LOGGER.debug("[%s] V1: Line 1 data: %s", self.device_name, self._line_1_data)
         elif line_id == LINE_2_ID:
             self._line_2_data = {
                 "voltage": voltage,
@@ -761,18 +821,18 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "power": power,
                 "energy": energy,
             }
-            _LOGGER.debug("[%s] Legacy: Line 2 data: %s", self.device_name, self._line_2_data)
+            _LOGGER.debug("[%s] V1: Line 2 data: %s", self.device_name, self._line_2_data)
         else:
-            _LOGGER.warning("[%s] Legacy: Unknown line identifier: %s", self.device_name, line_id.hex())
+            _LOGGER.warning("[%s] V1: Unknown line identifier: %s", self.device_name, line_id.hex())
 
     # =========================================================================
-    # MODERN V5 PROTOCOL HANDLERS
+    # V2 PROTOCOL HANDLERS
     # =========================================================================
 
-    def _notification_handler_modern_v5(self, sender: int, data: bytearray) -> None:
-        """Handle BLE notification data from WD_V5 device.
+    def _notification_handler_v2(self, sender: int, data: bytearray) -> None:
+        """Handle BLE notification data from V2 device.
 
-        WD_V5 sends variable-length packets with $yw@ header and q! end marker.
+        V2 sends variable-length packets with $yw@ header and q! end marker.
         Each notification is typically a complete packet. After parsing,
         pushes updated data to all entities immediately.
         """
@@ -783,7 +843,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_activity_time = now
 
         _LOGGER.debug(
-            "[%s] modern_V5: Notification #%d (+%.2fs) %d bytes from %s: %s",
+            "[%s] V2: Notification #%d (+%.2fs) %d bytes from %s: %s",
             self.device_name,
             self._notification_count,
             interval,
@@ -792,10 +852,10 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data.hex(),
         )
 
-        # WD_V5 typically sends complete packets per notification
+        # V2 typically sends complete packets per notification
         # Parse immediately if we have the header
-        if len(data) >= 4 and data[0:4] == MODERN_V5_HEADER:
-            self._parse_data_packet_modern_v5(data)
+        if len(data) >= 4 and data[0:4] == V2_HEADER:
+            self._parse_data_packet_v2(data)
             # Push updated data to all entities immediately
             if self._line_1_data:
                 self.async_set_updated_data(self._build_data_dict())
@@ -803,63 +863,61 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Buffer data if it doesn't start with header (continuation)
             self._data_buffer.extend(data)
             _LOGGER.debug(
-                "[%s] modern_V5: Buffered data, total %d bytes",
+                "[%s] V2: Buffered data, total %d bytes",
                 self.device_name,
                 len(self._data_buffer),
             )
 
-    def _parse_data_packet_modern_v5(self, data: bytes | bytearray) -> None:
-        """Parse WD_V5 data packet.
+    def _parse_data_packet_v2(self, data: bytes | bytearray) -> None:
+        """Parse V2 data packet.
 
-        Packet structure (45 bytes for full data packet):
+        Packet structure:
         - Bytes 0-3: Header "$yw@" (0x24797740)
-        - Byte 4: Unknown (0x01)
-        - Byte 5: Sequence number
-        - Byte 6: Message type (0x01=data, 0x02=status, 0x06=control)
-        - Bytes 7-8: Unknown (0x0022)
-        - Bytes 9-12: Voltage (BE int32 / 10000)
-        - Bytes 13-16: Current (BE int32 / 10000)
-        - Bytes 17-20: Power (BE int32 / 10000)
-        - Bytes 21+: Additional fields (energy, frequency, etc.)
+        - Byte 4: Protocol version (0x01)
+        - Byte 5: Sequence number (1-100)
+        - Byte 6: Command/message type (0x01=DLReport, 0x02=ErrorReport, 0x06=SetTime)
+        - Bytes 7-8: Payload length (big-endian, 0x0022=34 single-block, 0x0044=68 dual-block)
+        - Bytes 9-42: Line 1 payload (34 bytes per block)
+        - Bytes 43-76: Line 2 payload (dual-block only, 50A devices)
         - Last 2 bytes: End marker "q!" (0x7121)
         """
         # Verify minimum packet size
-        if len(data) < MODERN_V5_MIN_DATA_PACKET_SIZE:
+        if len(data) < V2_MIN_DATA_PACKET_SIZE:
             _LOGGER.debug(
-                "[%s] modern_V5: Packet too short (%d bytes), need at least %d",
+                "[%s] V2: Packet too short (%d bytes), need at least %d",
                 self.device_name,
                 len(data),
-                MODERN_V5_MIN_DATA_PACKET_SIZE,
+                V2_MIN_DATA_PACKET_SIZE,
             )
             return
 
         # Verify header
         header = bytes(data[0:4])
-        if header != MODERN_V5_HEADER:
+        if header != V2_HEADER:
             _LOGGER.debug(
-                "[%s] modern_V5: Invalid header: %s (expected %s)",
+                "[%s] V2: Invalid header: %s (expected %s)",
                 self.device_name,
                 header.hex(),
-                MODERN_V5_HEADER.hex(),
+                V2_HEADER.hex(),
             )
             return
 
-        # Get message type
-        msg_type = data[MODERN_V5_BYTE_MSG_TYPE]
+        # Get message type and sequence
+        msg_type = data[V2_BYTE_MSG_TYPE]
         sequence = data[5]
 
         _LOGGER.debug(
-            "[%s] modern_V5: Packet type=0x%02x seq=%d len=%d",
+            "[%s] V2: Packet type=0x%02x seq=%d len=%d",
             self.device_name,
             msg_type,
             sequence,
             len(data),
         )
 
-        # Only parse data packets (type 0x01)
-        if msg_type != MODERN_V5_MSG_TYPE_DATA:
+        # Only parse data packets (DLReport, type 0x01)
+        if msg_type != V2_MSG_TYPE_DATA:
             _LOGGER.debug(
-                "[%s] modern_V5: Skipping non-data packet (type 0x%02x): %s",
+                "[%s] V2: Skipping non-data packet (type 0x%02x): %s",
                 self.device_name,
                 msg_type,
                 data.hex(),
@@ -867,38 +925,36 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         try:
-            # Extract voltage (big-endian int32 ÷ 10000)
-            voltage_bytes = data[MODERN_V5_BYTE_VOLTAGE_START:MODERN_V5_BYTE_VOLTAGE_END]
+            # Extract Line 1 V/I/P (big-endian uint32 / 10000)
+            voltage_bytes = data[V2_BYTE_VOLTAGE_START:V2_BYTE_VOLTAGE_END]
             voltage_raw = struct.unpack(">I", voltage_bytes)[0]
             voltage = voltage_raw / DATA_CONVERSION_FACTOR
 
-            # Extract current (big-endian int32 ÷ 10000)
-            current_bytes = data[MODERN_V5_BYTE_CURRENT_START:MODERN_V5_BYTE_CURRENT_END]
+            current_bytes = data[V2_BYTE_CURRENT_START:V2_BYTE_CURRENT_END]
             current_raw = struct.unpack(">I", current_bytes)[0]
             current = current_raw / DATA_CONVERSION_FACTOR
 
-            # Extract power (big-endian int32 ÷ 10000)
-            power_bytes = data[MODERN_V5_BYTE_POWER_START:MODERN_V5_BYTE_POWER_END]
+            power_bytes = data[V2_BYTE_POWER_START:V2_BYTE_POWER_END]
             power_raw = struct.unpack(">I", power_bytes)[0]
             power = power_raw / DATA_CONVERSION_FACTOR
 
             # Extract energy if packet is long enough (bytes 21-24)
             energy = 0.0
-            if len(data) >= MODERN_V5_MIN_ENERGY_PACKET_SIZE:
-                energy_bytes = data[MODERN_V5_BYTE_ENERGY_START:MODERN_V5_BYTE_ENERGY_END]
+            if len(data) >= V2_MIN_ENERGY_PACKET_SIZE:
+                energy_bytes = data[V2_BYTE_ENERGY_START:V2_BYTE_ENERGY_END]
                 energy_raw = struct.unpack(">I", energy_bytes)[0]
                 energy = energy_raw / DATA_CONVERSION_FACTOR
                 _LOGGER.debug(
-                    "[%s] modern_V5: Energy raw=%s(%d) = %.2f kWh",
+                    "[%s] V2: Energy raw=%s(%d) = %.2f kWh",
                     self.device_name,
                     energy_bytes.hex(),
                     energy_raw,
                     energy,
                 )
 
-            # Log parsed values with raw hex for debugging
+            # Log parsed Line 1 values with raw hex
             _LOGGER.debug(
-                "[%s] modern_V5: Raw values - V=%s(%d) I=%s(%d) P=%s(%d)",
+                "[%s] V2: L1 raw V=%s(%d) I=%s(%d) P=%s(%d)",
                 self.device_name,
                 voltage_bytes.hex(),
                 voltage_raw,
@@ -906,15 +962,6 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 current_raw,
                 power_bytes.hex(),
                 power_raw,
-            )
-
-            _LOGGER.info(
-                "[%s] modern_V5: Line 1 - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh",
-                self.device_name,
-                voltage,
-                current,
-                power,
-                energy,
             )
 
             # Store Line 1 data
@@ -925,63 +972,206 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "energy": energy,
             }
 
-            # Try to decode Line 2 if packet is long enough
-            # For dual-phase V5 devices (if they exist), L2 data should be at bytes 25-36
+            # Extract extended single-block fields (bytes 25-42) if available
+            if len(data) >= V2_MIN_EXTENDED_PACKET_SIZE:
+                self._parse_v2_extended_fields(data)
+
+            # Check for dual-block layout (50A devices, payload length 0x0044 = 68 bytes)
             self._line_2_data = None
-            if len(data) >= MODERN_V5_MIN_L2_PACKET_SIZE:
-                l2_voltage_bytes = data[MODERN_V5_BYTE_L2_VOLTAGE_START:MODERN_V5_BYTE_L2_VOLTAGE_END]
-                l2_voltage_raw = struct.unpack(">I", l2_voltage_bytes)[0]
-                l2_voltage = l2_voltage_raw / DATA_CONVERSION_FACTOR
+            if len(data) >= 59 and data[7:9] == b"\x00\x44":
+                self._decode_v2_dual_block_line2(data)
 
-                # Check if L2 voltage is in valid range (indicates dual-phase device)
-                if MODERN_V5_VOLTAGE_MIN <= l2_voltage <= MODERN_V5_VOLTAGE_MAX:
-                    l2_current_bytes = data[MODERN_V5_BYTE_L2_CURRENT_START:MODERN_V5_BYTE_L2_CURRENT_END]
-                    l2_current_raw = struct.unpack(">I", l2_current_bytes)[0]
-                    l2_current = l2_current_raw / DATA_CONVERSION_FACTOR
-
-                    l2_power_bytes = data[MODERN_V5_BYTE_L2_POWER_START:MODERN_V5_BYTE_L2_POWER_END]
-                    l2_power_raw = struct.unpack(">I", l2_power_bytes)[0]
-                    l2_power = l2_power_raw / DATA_CONVERSION_FACTOR
-
-                    self._line_2_data = {
-                        "voltage": l2_voltage,
-                        "current": l2_current,
-                        "power": l2_power,
-                        "energy": 0,  # L2 energy position unknown
-                    }
-
-                    _LOGGER.info(
-                        "[%s] modern_V5: Line 2 - V=%.2fV I=%.2fA P=%.2fW (dual-phase detected)",
-                        self.device_name,
-                        l2_voltage,
-                        l2_current,
-                        l2_power,
-                    )
-                else:
-                    _LOGGER.debug(
-                        "[%s] modern_V5: L2 voltage %.2fV out of range, single-phase device",
-                        self.device_name,
-                        l2_voltage,
-                    )
-
-            # Error code not yet decoded for V5
-            self._error_code = 0
-
-            _LOGGER.debug("[%s] modern_V5: Line 1 data: %s", self.device_name, self._line_1_data)
+            _LOGGER.debug(
+                "[%s] V2: Line 1 - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh",
+                self.device_name,
+                voltage,
+                current,
+                power,
+                energy,
+            )
+            _LOGGER.debug("[%s] V2: Line 1 data: %s", self.device_name, self._line_1_data)
 
         except struct.error as err:
             _LOGGER.error(
-                "[%s] modern_V5: Parse error at struct unpack: %s (data: %s)",
+                "[%s] V2: Parse error at struct unpack: %s (data: %s)",
                 self.device_name,
                 err,
                 data.hex(),
             )
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.error(
-                "[%s] modern_V5: Unexpected parse error: %s (data: %s)",
+                "[%s] V2: Unexpected parse error: %s (data: %s)",
                 self.device_name,
                 err,
                 data.hex(),
+            )
+
+    def _parse_v2_extended_fields(self, data: bytes | bytearray) -> None:
+        """Parse V2 extended fields from single-block payload bytes 25-42.
+
+        These fields are confirmed by the Android app source code.
+        Bytes 25-28 (temp1) remain unidentified.
+        """
+        # Bytes 25-28: temp1 (internal/unknown) - log for analysis
+        temp1_bytes = data[25:29]
+        temp1_raw = struct.unpack(">I", temp1_bytes)[0]
+
+        # Output voltage (bytes 29-32, uint32 / 10000)
+        out_v_bytes = data[V2_BYTE_OUTPUT_VOLTAGE_START:V2_BYTE_OUTPUT_VOLTAGE_END]
+        out_v_raw = struct.unpack(">I", out_v_bytes)[0]
+        output_voltage = out_v_raw / DATA_CONVERSION_FACTOR
+        self._output_voltage = output_voltage
+
+        # Neutral detection status (byte 34, 0x00 = OK)
+        neutral_det = data[V2_BYTE_NEUTRAL_DETECTION]
+        self._neutral_detection = neutral_det
+
+        # Boost mode (byte 35, 0=off, 1=active)
+        boost = data[V2_BYTE_BOOST_MODE]
+        self._boost_mode = boost
+
+        # Temperature (byte 36, degrees C)
+        temperature = data[V2_BYTE_TEMPERATURE]
+        self._temperature = temperature
+
+        # Frequency (bytes 37-40, uint32 / 100)
+        freq_bytes = data[V2_BYTE_FREQUENCY_START:V2_BYTE_FREQUENCY_END]
+        freq_raw = struct.unpack(">I", freq_bytes)[0]
+        frequency = freq_raw / FREQUENCY_CONVERSION_FACTOR
+        self._frequency = frequency
+
+        # Error code (byte 41)
+        error_code = data[V2_BYTE_ERROR_CODE]
+        self._error_code = error_code
+
+        # Relay status (byte 42, 0x00=ON, 0x01 or 0x02=OFF/Error)
+        relay_status = data[V2_BYTE_RELAY_STATUS]
+        self._relay_status = relay_status
+
+        # Structured debug log for all extended fields
+        _LOGGER.debug(
+            "[%s] V2: Extended fields - temp1=%s(%d) outV=%s(%.2fV) "
+            "backlight=%d neutral=%d boost=%d temp=%d°C "
+            "freq=%s(%.2fHz) error=%d relay=0x%02x",
+            self.device_name,
+            temp1_bytes.hex(),
+            temp1_raw,
+            out_v_bytes.hex(),
+            output_voltage,
+            data[33],  # backlight
+            neutral_det,
+            boost,
+            temperature,
+            freq_bytes.hex(),
+            frequency,
+            error_code,
+            relay_status,
+        )
+
+        # Warn on unexpected values for beta testing
+        if temperature > 100:
+            _LOGGER.warning(
+                "[%s] V2: Unexpected temperature value: %d°C (raw byte 36 = 0x%02x)",
+                self.device_name,
+                temperature,
+                temperature,
+            )
+        if relay_status not in (0x00, 0x01, 0x02):
+            _LOGGER.warning(
+                "[%s] V2: Unknown relay status: 0x%02x (expected 0x00/0x01/0x02)",
+                self.device_name,
+                relay_status,
+            )
+        if temp1_raw != 0:
+            _LOGGER.debug(
+                "[%s] V2: temp1 (bytes 25-28) has non-zero value: %s (%d) - field purpose unknown",
+                self.device_name,
+                temp1_bytes.hex(),
+                temp1_raw,
+            )
+
+    def _decode_v2_dual_block_line2(
+        self, data: bytes | bytearray
+    ) -> None:
+        """Decode Line 2 for V2 packets with dual 34-byte data blocks.
+
+        Used by Gen 2 50A devices. Payload length 0x0044 (68) indicates
+        two 34-byte blocks:
+        - Block 1 starts at byte 9 (Line 1 V/I/P/E + extended fields)
+        - Block 2 starts at byte 43 (Line 2 V/I/P/E + extended fields)
+        """
+        l2_voltage_bytes = data[V2_DUAL_BLOCK_L2_VOLTAGE_START:V2_DUAL_BLOCK_L2_VOLTAGE_END]
+        l2_current_bytes = data[V2_DUAL_BLOCK_L2_CURRENT_START:V2_DUAL_BLOCK_L2_CURRENT_END]
+        l2_power_bytes = data[V2_DUAL_BLOCK_L2_POWER_START:V2_DUAL_BLOCK_L2_POWER_END]
+        l2_energy_bytes = data[V2_DUAL_BLOCK_L2_ENERGY_START:V2_DUAL_BLOCK_L2_ENERGY_END]
+
+        l2_voltage = struct.unpack(">I", l2_voltage_bytes)[0] / DATA_CONVERSION_FACTOR
+        l2_current = struct.unpack(">I", l2_current_bytes)[0] / DATA_CONVERSION_FACTOR
+        l2_power = struct.unpack(">I", l2_power_bytes)[0] / DATA_CONVERSION_FACTOR
+        l2_energy = struct.unpack(">I", l2_energy_bytes)[0] / DATA_CONVERSION_FACTOR
+
+        if not (V2_VOLTAGE_MIN <= l2_voltage <= V2_VOLTAGE_MAX):
+            _LOGGER.debug(
+                "[%s] V2: Dual-block L2 voltage %.2fV out of range, skipping",
+                self.device_name,
+                l2_voltage,
+            )
+            return
+        if not (0.0 <= l2_current <= 80.0):
+            return
+        if not (0.0 <= l2_power <= 20000.0):
+            return
+        if not (0.0 <= l2_energy <= 10_000_000.0):
+            return
+
+        _LOGGER.debug(
+            "[%s] V2: Dual-block L2 raw V=%s I=%s P=%s E=%s",
+            self.device_name,
+            l2_voltage_bytes.hex(),
+            l2_current_bytes.hex(),
+            l2_power_bytes.hex(),
+            l2_energy_bytes.hex(),
+        )
+
+        self._line_2_data = {
+            "voltage": l2_voltage,
+            "current": l2_current,
+            "power": l2_power,
+            "energy": l2_energy,
+        }
+
+        _LOGGER.debug(
+            "[%s] V2: Line 2 - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh (dual-block)",
+            self.device_name,
+            l2_voltage,
+            l2_current,
+            l2_power,
+            l2_energy,
+        )
+
+        # Parse Line 2 extended fields if available (bytes 59-76)
+        if len(data) >= 77:
+            l2_out_v_bytes = data[V2_DUAL_BLOCK_L2_OUTPUT_VOLTAGE_START:V2_DUAL_BLOCK_L2_OUTPUT_VOLTAGE_END]
+            l2_out_v = struct.unpack(">I", l2_out_v_bytes)[0] / DATA_CONVERSION_FACTOR
+            l2_neutral = data[V2_DUAL_BLOCK_L2_NEUTRAL_DETECTION]
+            l2_boost = data[V2_DUAL_BLOCK_L2_BOOST_MODE]
+            l2_temp = data[V2_DUAL_BLOCK_L2_TEMPERATURE]
+            l2_freq_bytes = data[V2_DUAL_BLOCK_L2_FREQUENCY_START:V2_DUAL_BLOCK_L2_FREQUENCY_END]
+            l2_freq = struct.unpack(">I", l2_freq_bytes)[0] / FREQUENCY_CONVERSION_FACTOR
+            l2_error = data[V2_DUAL_BLOCK_L2_ERROR_CODE]
+            l2_relay = data[V2_DUAL_BLOCK_L2_RELAY_STATUS]
+
+            _LOGGER.debug(
+                "[%s] V2: Dual-block L2 extended - outV=%.2fV neutral=%d boost=%d "
+                "temp=%d°C freq=%.2fHz error=%d relay=0x%02x",
+                self.device_name,
+                l2_out_v,
+                l2_neutral,
+                l2_boost,
+                l2_temp,
+                l2_freq,
+                l2_error,
+                l2_relay,
             )
 
     def _build_data_dict(self) -> dict[str, Any]:
@@ -1016,6 +1206,14 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Error information
         data[SENSOR_ERROR_CODE] = self._error_code
         data[SENSOR_ERROR_TEXT] = ERROR_CODES.get(self._error_code, "Unknown Error")
+
+        # New sensors
+        data[SENSOR_FREQUENCY] = self._frequency
+        data[SENSOR_OUTPUT_VOLTAGE] = self._output_voltage
+        data[SENSOR_TEMPERATURE] = self._temperature
+        data[SENSOR_RELAY_STATUS] = self._relay_status
+        data[SENSOR_BOOST_MODE] = self._boost_mode
+        data[SENSOR_NEUTRAL_DETECTION] = self._neutral_detection
 
         _LOGGER.debug("Built data dict: %s", data)
         return data

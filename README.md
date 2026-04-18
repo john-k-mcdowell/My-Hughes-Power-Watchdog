@@ -15,7 +15,7 @@ Hughes Power Watchdog devices come in two generations, each using a different BL
 | Generation | Connectivity | Model Suffix | BLE Device Name | Mobile App | Example Models |
 |-----------|-------------|-------------|----------------|-----------|---------------|
 | **Gen 1** | Bluetooth only | EPO | `PMD*`, `PWS*`, `PMS*` | [Power Watchdog Bluetooth ONLY](https://play.google.com/store/apps/details?id=com.hughes.epo) | PWD30-EPO, PWD50-EPO, PWD50-EPD |
-| **Gen 2** | WiFi + Bluetooth | EPOW | `WD_V5_*` | [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) | PWD30EPOW, PWD50-EPOW |
+| **Gen 2** | WiFi + Bluetooth | EPOW | `WD_V5_*`, `WD_E5_*`, `WD_V6_*`, `WD_E6_*` | [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) | PWD30EPOW, PWD50-EPOW |
 
 Both generations are portable or hardwired (-H suffix). This integration uses only the BLE connection, even on Gen 2 WiFi models.
 
@@ -23,9 +23,10 @@ Both generations are portable or hardwired (-H suffix). This integration uses on
 
 | Model | Generation | Protocol | Known Issues |
 |-------|-----------|----------|-------------|
-| PWD50-EPD | Gen 1 | Legacy | None |
-| PWD-VM-30A | Gen 1 | Legacy | None |
-| PWD30EPOW | Gen 2 | V5 | None |
+| PWD50-EPD | Gen 1 | V1 | None |
+| PWD-VM-30A | Gen 1 | V1 | None |
+| PWD30EPOW | Gen 2 | V2 | None |
+| PWD50EPOW | Gen 2 | V2 | None |
 
 Please let me know via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues) if you have tested on other models so they can be included in the README.
 
@@ -37,21 +38,31 @@ Based on the ESPHome implementation by spbrogan, tango2590, and makifoxgirl.
 
 ### Supported Models
 - **Gen 1** - Hughes Power Watchdog (PMD/PWS/PMS) - Bluetooth only models
-- **Gen 2** - Hughes Power Watchdog (WD_V5) - WiFi + Bluetooth models (v0.5.0+)
+- **Gen 2** - Hughes Power Watchdog (WD_V5/WD_E5/WD_V6/WD_E6) - WiFi + Bluetooth models (v0.5.0+)
 
 ### Real-Time Sensor Updates (v0.6.0)
 
 Starting with v0.6.0, the integration uses a **push-based model** for real-time sensor updates. The device streams data continuously via BLE notifications (~1 second intervals), and the integration subscribes once and pushes updates to Home Assistant entities as they arrive. This replaces the previous polling model that only captured data every 30 seconds.
 
-> **Note:** The real-time push model has been tested and verified on Gen 1 devices. The same approach has been applied to Gen 2 devices but **has not yet been tested** due to lack of a Gen 2 test device. If you have a Gen 2 (EPOW/WD_V5) device, please enable debug logging and report any issues via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues).
+> **Note:** The real-time push model has been validated on both Gen 1 and Gen 2 devices. If you encounter issues with a specific model, please enable debug logging and report any issues via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues).
 
 ### Available Sensors
+
+**All Models:**
 - **Line 1 Voltage** (volts)
 - **Line 1 Current** (amps)
 - **Line 1 Power** (watts)
 - **Cumulative Power Usage** (kWh)
 - **Error Code** (number)
 - **Error Description** (text)
+- **Frequency** (Hz) - AC power line frequency
+
+**Gen 2 (V2) Models Only:**
+- **Output Voltage** (volts) - Voltage after autoformer adjustment
+- **Temperature** (°C) - Device temperature (shown when non-zero)
+- **Relay Status** - Whether the power relay is ON or tripped (binary sensor)
+- **Boost Mode** - Whether the autoformer boost is active (binary sensor)
+- **Neutral Detection** - Ground/neutral monitoring status (binary sensor)
 
 **50 Amp Units Only:**
 - **Line 2 Voltage** (volts)
@@ -61,7 +72,7 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 
 ### Controls
 - **Monitoring Switch** - Enable/disable the BLE connection. Turning monitoring off cleanly unsubscribes from notifications and disconnects, freeing the BLE connection slot (useful for ESPHome Bluetooth Proxy users with the default 3-slot limit). Turning it back on reconnects and resumes real-time data.
-- *Not Implemented yet* - Reset Power Usage Total
+- *Not Implemented yet* - Reset Power Usage Total, Relay Control, Backlight (coming in Phase 2)
 
 ## Installation
 
@@ -87,7 +98,7 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 
 ### Automatic Discovery (Recommended)
 
-1. Go to **Settings** → **Devices & Services**
+1. Go to **Settings** -> **Devices & Services**
 2. Click **Add Integration**
 3. Search for "Hughes Power Watchdog"
 4. Follow the configuration prompts
@@ -104,16 +115,19 @@ If your device is not auto-discovered but is powered on and within Bluetooth ran
 
 > **Important:** If you successfully configure your device using manual MAC entry, please [open a GitHub issue](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues) and include your device model name. This helps us add it to the auto-discovery list for future users.
 
-## Gen 2 (V5) Protocol Support
+## Gen 2 (V2) Protocol Support
 
-Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth models with device names starting with `WD_V5_`, such as PWD30EPOW). These devices use a different BLE protocol than the Gen 1 Bluetooth-only models. The protocol header `$yw@` corresponds to the "yw" identifier used in the official [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) app.
+Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth models with device names starting with `WD_V5_`, `WD_E5_`, `WD_V6_`, or `WD_E6_`, such as PWD30EPOW/PWD50EPOW). These devices use a different BLE protocol than the Gen 1 Bluetooth-only models. The protocol header `$yw@` corresponds to the "yw" identifier used in the official [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) app.
 
-**Gen 2 (V5) Status:**
+**Gen 2 (V2) Status:**
 - Voltage, Current, Power readings - Working
 - Energy (kWh) - Working
-- Real-time push updates (v0.6.0) - **Not yet tested** (needs Gen 2 device)
-- Error codes - Not yet implemented
-- Line 2 (50A dual-phase) - Not yet tested
+- Real-time push updates (v0.6.0) - Working
+- Error codes - Working (v0.7.0)
+- Frequency - Working (v0.7.0)
+- Output Voltage - Working (v0.7.0)
+- Temperature, Relay Status, Boost Mode, Neutral Detection - Working (v0.7.0)
+- Line 2 (50A dual-phase) - Working
 
 **If you have a Gen 2 device**, please help us by:
 1. Enabling debug logging (see below)
@@ -131,7 +145,7 @@ logger:
     custom_components.hughes_power_watchdog: debug
 ```
 
-Then check your Home Assistant logs for entries prefixed with `[modern_V5]` or `[Legacy]`.
+Then check your Home Assistant logs for entries prefixed with `[V2]` or `[V1]`.
 
 ## Requirements
 
@@ -160,8 +174,11 @@ Based on the original ESPHome implementation by:
 - [tango2590](https://github.com/tango2590/Hughes-Power-Watchdog)
 - SergeantBort
 
+V1/V2 protocol documentation reverse-engineered from the Android app source by:
+- [gearhead765](https://github.com/gearhead765)
+
 ### Contributors
-- [IAmTheMitchell](https://github.com/IAmTheMitchell) — Gen 2 WD_E5 device support, V5 50A Line 2 sensor fix, protocol documentation for dual-block packet format
+- [IAmTheMitchell](https://github.com/IAmTheMitchell) — Gen 2 WD_E5 device support, V2 50A Line 2 sensor fix, protocol documentation for dual-block packet format
 
 ## License
 
