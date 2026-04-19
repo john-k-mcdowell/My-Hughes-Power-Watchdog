@@ -291,6 +291,16 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug(
                 "[%s] Available services: %s", self.device_name, service_uuids
             )
+            # Log all characteristics with properties for GATT profile analysis
+            for service in services:
+                for char in service.characteristics:
+                    _LOGGER.debug(
+                        "[%s] GATT: service=%s char=%s properties=%s",
+                        self.device_name,
+                        service.uuid,
+                        char.uuid,
+                        char.properties,
+                    )
 
             if V2_SERVICE_UUID.lower() in service_uuids:
                 _LOGGER.info(
@@ -692,15 +702,25 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         try:
             client = await self._ensure_connected()
+            cmd_bytes = command.encode("ascii")
+            _LOGGER.debug(
+                "[%s] V1: Writing command '%s' (%s) to char %s",
+                self.device_name,
+                command,
+                cmd_bytes.hex(),
+                V1_CHARACTERISTIC_UUID_RX,
+            )
             await client.write_gatt_char(
                 V1_CHARACTERISTIC_UUID_RX,
-                command.encode("ascii"),
+                cmd_bytes,
                 response=True,
             )
             _LOGGER.info(
-                "[%s] V1: Sent command '%s'",
+                "[%s] V1: Sent command '%s' (%d bytes) to %s",
                 self.device_name,
                 command,
+                len(cmd_bytes),
+                V1_CHARACTERISTIC_UUID_RX,
             )
             return True
         except BleakError as err:
