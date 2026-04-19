@@ -233,7 +233,7 @@ class HughesPowerWatchdogFrequencySensor(HughesPowerWatchdogSensor):
     def __init__(self, coordinator: HughesPowerWatchdogCoordinator) -> None:
         """Initialize frequency sensor."""
         super().__init__(coordinator, SENSOR_FREQUENCY)
-        self._attr_name = "Frequency"
+        self._attr_name = "Frequency Line 1"
 
     @property
     def native_value(self) -> float | None:

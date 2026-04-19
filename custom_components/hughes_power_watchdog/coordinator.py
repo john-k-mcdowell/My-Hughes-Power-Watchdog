@@ -782,7 +782,6 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         freq_bytes = self._data_buffer[V1_BYTE_FREQUENCY_START:V1_BYTE_FREQUENCY_END]
         freq_raw = struct.unpack(">i", freq_bytes)[0]
         frequency = freq_raw / FREQUENCY_CONVERSION_FACTOR
-        self._frequency = frequency
         _LOGGER.debug(
             "[%s] V1: Frequency raw=%s(%d) = %.2f Hz",
             self.device_name,
@@ -814,6 +813,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         if line_id == LINE_1_ID:
+            self._frequency = frequency
             self._line_1_data = {
                 "voltage": voltage,
                 "current": current,
@@ -822,6 +822,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
             _LOGGER.debug("[%s] V1: Line 1 data: %s", self.device_name, self._line_1_data)
         elif line_id == LINE_2_ID:
+            self._frequency_l2 = frequency
             self._line_2_data = {
                 "voltage": voltage,
                 "current": current,

@@ -55,7 +55,7 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 - **Cumulative Power Usage** (kWh)
 - **Error Code** (number)
 - **Error Description** (text)
-- **Frequency** (Hz) - AC power line frequency
+- **Frequency Line 1** (Hz) - AC power line frequency
 
 **Gen 2 (V2) Models Only:**
 - **Output Voltage** (volts) - Voltage after autoformer adjustment
