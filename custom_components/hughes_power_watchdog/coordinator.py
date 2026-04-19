@@ -359,6 +359,24 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Return True if device reports dual-line (50A) data."""
         return bool(self._line_2_data)
 
+    @property
+    def has_booster(self) -> bool:
+        """Return True if device reports real output voltage.
+
+        Only V8/V9/E8/E9 Gen 2 models populate the output voltage field
+        with actual regulated voltage. On V5/E5/V6/E6 models, the field
+        mirrors the energy counter and must be suppressed.
+        """
+        if not self._is_v2_protocol or not self.device_name:
+            return False
+        name = self.device_name
+        if name.startswith("WD_"):
+            parts = name.split("_")
+            if len(parts) >= 2:
+                device_type = parts[1]  # e.g. "V5", "E5", "V8", "E9"
+                return len(device_type) == 2 and device_type[1] in ("8", "9")
+        return False
+
     async def _ensure_connected(self) -> BleakClient:
         """Ensure we have an active BLE connection.
 
@@ -1346,10 +1364,15 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         temp1_raw = struct.unpack(">I", temp1_bytes)[0]
 
         # Output voltage (bytes 29-32, uint32 / 10000)
+        # Only V8/V9/E8/E9 models report real output voltage here.
+        # On V5/E5/V6/E6 models this field mirrors the energy counter.
         out_v_bytes = data[V2_BYTE_OUTPUT_VOLTAGE_START:V2_BYTE_OUTPUT_VOLTAGE_END]
         out_v_raw = struct.unpack(">I", out_v_bytes)[0]
         output_voltage = out_v_raw / DATA_CONVERSION_FACTOR
-        self._output_voltage = output_voltage
+        if self.has_booster:
+            self._output_voltage = output_voltage
+        else:
+            self._output_voltage = None
 
         # Backlight level (byte 33, 0-5)
         self._backlight = data[V2_BYTE_BACKLIGHT]
@@ -1381,15 +1404,16 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._relay_status = relay_status
 
         # Structured debug log for all extended fields
+        out_v_label = "%.2fV" % output_voltage if self.has_booster else "%.2fV(suppressed-mirrors-energy)" % output_voltage
         _LOGGER.debug(
-            "[%s] V2: Extended fields - temp1=%s(%d) outV=%s(%.2fV) "
+            "[%s] V2: Extended fields - temp1=%s(%d) outV=%s(%s) "
             "backlight=%d neutral=%d boost=%d temp=%d°C "
             "freq=%s(%.2fHz) error=%d relay=0x%02x",
             self.device_name,
             temp1_bytes.hex(),
             temp1_raw,
             out_v_bytes.hex(),
-            output_voltage,
+            out_v_label,
             data[33],  # backlight
             neutral_det,
             boost,

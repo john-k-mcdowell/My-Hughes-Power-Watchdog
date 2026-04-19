@@ -57,8 +57,10 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 - **Error Description** (text)
 - **Frequency Line 1** (Hz) - AC power line frequency
 
+**Gen 2 (V2) Booster Models Only (V8/V9/E8/E9):**
+- **Output Voltage** (volts) - Voltage after autoformer adjustment (suppressed on V5/E5/V6/E6 devices where this field mirrors the energy counter)
+
 **Gen 2 (V2) Models Only:**
-- **Output Voltage** (volts) - Voltage after autoformer adjustment
 - **Temperature** (°C) - Device temperature (shown when non-zero)
 - **Relay Status** - Whether the power relay is ON or tripped (binary sensor)
 - **Boost Mode** - Whether the autoformer boost is active (binary sensor)

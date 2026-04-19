@@ -272,7 +272,7 @@ Each 34-byte block contains:
 | 17-20 | Power (L1) | |
 | 21-24 | Energy (L1) | |
 | 25-28 | temp1 | Internal/unknown - log for analysis |
-| 29-32 | Output Voltage | Important for autoformer users |
+| 29-32 | Output Voltage | Booster models (V8/V9/E8/E9) only; mirrors energy counter on V5/E5/V6/E6 |
 | 33 | Backlight | |
 | 34 | Neutral Detection | |
 | 35 | Boost Mode | |

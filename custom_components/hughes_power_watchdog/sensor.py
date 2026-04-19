@@ -76,10 +76,11 @@ async def async_setup_entry(
 
     # V2-only sensors (these fields don't exist in the V1 protocol)
     if coordinator.is_v2_protocol:
-        sensors.extend([
-            HughesPowerWatchdogOutputVoltageSensor(coordinator),
-            HughesPowerWatchdogTemperatureSensor(coordinator),
-        ])
+        # Output voltage only available on booster models (V8/V9/E8/E9).
+        # On V5/E5/V6/E6, the field mirrors energy and is suppressed.
+        if coordinator.has_booster:
+            sensors.append(HughesPowerWatchdogOutputVoltageSensor(coordinator))
+        sensors.append(HughesPowerWatchdogTemperatureSensor(coordinator))
 
     async_add_entities(sensors)
 
