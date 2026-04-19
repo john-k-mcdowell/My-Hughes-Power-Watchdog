@@ -114,6 +114,7 @@ from .const import (
     SENSOR_VOLTAGE_L1,
     SENSOR_VOLTAGE_L2,
     SENSOR_FREQUENCY,
+    SENSOR_FREQUENCY_L2,
     SENSOR_OUTPUT_VOLTAGE,
     SENSOR_TEMPERATURE,
     SENSOR_RELAY_STATUS,
@@ -178,6 +179,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._line_2_data: dict[str, float] = {}
         self._error_code: int = 0
         self._frequency: float | None = None
+        self._frequency_l2: float | None = None
         self._output_voltage: float | None = None
         self._temperature: int | None = None
         self._relay_status: int | None = None
@@ -313,6 +315,11 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def is_v2_protocol(self) -> bool:
         """Return True if device uses the V2 protocol."""
         return self._is_v2_protocol
+
+    @property
+    def is_dual_line(self) -> bool:
+        """Return True if device reports dual-line (50A) data."""
+        return bool(self._line_2_data)
 
     async def _ensure_connected(self) -> BleakClient:
         """Ensure we have an active BLE connection.
@@ -1158,6 +1165,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             l2_temp = data[V2_DUAL_BLOCK_L2_TEMPERATURE]
             l2_freq_bytes = data[V2_DUAL_BLOCK_L2_FREQUENCY_START:V2_DUAL_BLOCK_L2_FREQUENCY_END]
             l2_freq = struct.unpack(">I", l2_freq_bytes)[0] / FREQUENCY_CONVERSION_FACTOR
+            self._frequency_l2 = l2_freq
             l2_error = data[V2_DUAL_BLOCK_L2_ERROR_CODE]
             l2_relay = data[V2_DUAL_BLOCK_L2_RELAY_STATUS]
 
@@ -1191,7 +1199,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     total_energy = total_energy + line_2_energy
             data[SENSOR_TOTAL_POWER] = total_energy
 
-        # Line 2 data (50A units only)
+        # Line 2 data (50A dual-line units only)
         if self._line_2_data:
             data[SENSOR_VOLTAGE_L2] = self._line_2_data.get("voltage")
             data[SENSOR_CURRENT_L2] = self._line_2_data.get("current")
@@ -1201,13 +1209,9 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             power_l1 = self._line_1_data.get("power", 0)
             power_l2 = self._line_2_data.get("power", 0)
             data[SENSOR_COMBINED_POWER] = power_l1 + power_l2
-        else:
-            # 30A unit - set Line 2 to None
-            data[SENSOR_VOLTAGE_L2] = None
-            data[SENSOR_CURRENT_L2] = None
-            data[SENSOR_POWER_L2] = None
-            # For 30A, combined power = Line 1 power
-            data[SENSOR_COMBINED_POWER] = self._line_1_data.get("power")
+
+            # Line 2 frequency (V2 dual-block only)
+            data[SENSOR_FREQUENCY_L2] = self._frequency_l2
 
         # Error information
         data[SENSOR_ERROR_CODE] = self._error_code

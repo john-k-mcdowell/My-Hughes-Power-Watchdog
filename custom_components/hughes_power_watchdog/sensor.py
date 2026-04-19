@@ -30,6 +30,7 @@ from .const import (
     SENSOR_ERROR_CODE,
     SENSOR_ERROR_TEXT,
     SENSOR_FREQUENCY,
+    SENSOR_FREQUENCY_L2,
     SENSOR_OUTPUT_VOLTAGE,
     SENSOR_POWER_L1,
     SENSOR_POWER_L2,
@@ -57,15 +58,21 @@ async def async_setup_entry(
         HughesPowerWatchdogVoltageSensor(coordinator, SENSOR_VOLTAGE_L1, "Line 1"),
         HughesPowerWatchdogCurrentSensor(coordinator, SENSOR_CURRENT_L1, "Line 1"),
         HughesPowerWatchdogPowerSensor(coordinator, SENSOR_POWER_L1, "Line 1"),
-        HughesPowerWatchdogVoltageSensor(coordinator, SENSOR_VOLTAGE_L2, "Line 2"),
-        HughesPowerWatchdogCurrentSensor(coordinator, SENSOR_CURRENT_L2, "Line 2"),
-        HughesPowerWatchdogPowerSensor(coordinator, SENSOR_POWER_L2, "Line 2"),
-        HughesPowerWatchdogPowerSensor(coordinator, SENSOR_COMBINED_POWER, "Combined"),
         HughesPowerWatchdogEnergySensor(coordinator),
         HughesPowerWatchdogErrorCodeSensor(coordinator),
         HughesPowerWatchdogErrorTextSensor(coordinator),
         HughesPowerWatchdogFrequencySensor(coordinator),
     ]
+
+    # Dual-line sensors (50A devices only - both V1 and V2)
+    if coordinator.is_dual_line:
+        sensors.extend([
+            HughesPowerWatchdogVoltageSensor(coordinator, SENSOR_VOLTAGE_L2, "Line 2"),
+            HughesPowerWatchdogCurrentSensor(coordinator, SENSOR_CURRENT_L2, "Line 2"),
+            HughesPowerWatchdogPowerSensor(coordinator, SENSOR_POWER_L2, "Line 2"),
+            HughesPowerWatchdogPowerSensor(coordinator, SENSOR_COMBINED_POWER, "Combined"),
+            HughesPowerWatchdogFrequencyLineSensor(coordinator, SENSOR_FREQUENCY_L2, "Line 2"),
+        ])
 
     # V2-only sensors (these fields don't exist in the V1 protocol)
     if coordinator.is_v2_protocol:
@@ -227,6 +234,27 @@ class HughesPowerWatchdogFrequencySensor(HughesPowerWatchdogSensor):
         """Initialize frequency sensor."""
         super().__init__(coordinator, SENSOR_FREQUENCY)
         self._attr_name = "Frequency"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the frequency value."""
+        return self.coordinator.data.get(self._sensor_type)
+
+
+class HughesPowerWatchdogFrequencyLineSensor(HughesPowerWatchdogSensor):
+    """Per-line frequency sensor for Hughes Power Watchdog (50A dual-line devices)."""
+
+    _attr_device_class = SensorDeviceClass.FREQUENCY
+    _attr_native_unit_of_measurement = UnitOfFrequency.HERTZ
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+
+    def __init__(
+        self, coordinator: HughesPowerWatchdogCoordinator, sensor_type: str, line: str
+    ) -> None:
+        """Initialize per-line frequency sensor."""
+        super().__init__(coordinator, sensor_type)
+        self._attr_name = f"Frequency {line}"
 
     @property
     def native_value(self) -> float | None:
