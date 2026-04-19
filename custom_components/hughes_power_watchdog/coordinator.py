@@ -43,7 +43,7 @@ from .const import (
     TOTAL_DATA_SIZE,
     V1_BYTE_FREQUENCY_START,
     V1_BYTE_FREQUENCY_END,
-    V1_CHARACTERISTIC_UUID_RX,
+    V1_CHARACTERISTIC_UUID_CMD,
     V1_CMD_BACKLIGHT,
     V1_CMD_DELETE_ALL_RECORDS,
     V1_CMD_ENERGY_RESET,
@@ -721,10 +721,10 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.device_name,
                 command,
                 cmd_bytes.hex(),
-                V1_CHARACTERISTIC_UUID_RX,
+                V1_CHARACTERISTIC_UUID_CMD,
             )
             await client.write_gatt_char(
-                V1_CHARACTERISTIC_UUID_RX,
+                V1_CHARACTERISTIC_UUID_CMD,
                 cmd_bytes,
                 response=True,
             )
@@ -733,7 +733,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.device_name,
                 command,
                 len(cmd_bytes),
-                V1_CHARACTERISTIC_UUID_RX,
+                V1_CHARACTERISTIC_UUID_CMD,
             )
             return True
         except BleakError as err:

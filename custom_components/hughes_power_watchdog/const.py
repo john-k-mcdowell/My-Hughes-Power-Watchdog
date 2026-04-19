@@ -36,7 +36,8 @@ DATA_COLLECTION_TIMEOUT = 3  # seconds - wait for device to send data chunks
 # Source: https://github.com/spbrogan/esphome/tree/PolledSensor/esphome/components/hughes_power_watchdog
 V1_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
 V1_CHARACTERISTIC_UUID_TX = "0000ffe2-0000-1000-8000-00805f9b34fb"  # Device transmits data
-V1_CHARACTERISTIC_UUID_RX = "0000fff5-0000-1000-8000-00805f9b34fb"  # Device receives commands
+V1_CHARACTERISTIC_UUID_RX = "0000fff5-0000-1000-8000-00805f9b34fb"  # General write (unused)
+V1_CHARACTERISTIC_UUID_CMD = "00001003-0000-1000-8000-00805f9b34fb"  # Device receives commands
 
 # Backward-compatible aliases
 LEGACY_SERVICE_UUID = V1_SERVICE_UUID
