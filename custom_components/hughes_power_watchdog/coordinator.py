@@ -695,7 +695,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await client.write_gatt_char(
                 V1_CHARACTERISTIC_UUID_RX,
                 command.encode("ascii"),
-                response=False,
+                response=True,
             )
             _LOGGER.info(
                 "[%s] V1: Sent command '%s'",
