@@ -703,6 +703,19 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             client = await self._ensure_connected()
             cmd_bytes = command.encode("ascii")
+
+            # Log GATT profile for command debugging
+            if client.services:
+                for service in client.services:
+                    for char in service.characteristics:
+                        _LOGGER.debug(
+                            "[%s] GATT: service=%s char=%s properties=%s",
+                            self.device_name,
+                            service.uuid,
+                            char.uuid,
+                            char.properties,
+                        )
+
             _LOGGER.debug(
                 "[%s] V1: Writing command '%s' (%s) to char %s",
                 self.device_name,
