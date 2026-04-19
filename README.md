@@ -71,9 +71,15 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 - **Total Combined Power** (L1 + L2, watts)
 - **Frequency Line 2** (Hz) - AC power line frequency for Line 2 (Gen 2 V2 only)
 
-### Controls
+### Device Controls (v0.8.0)
+
+- **Power Relay** (switch) - Turn the power relay on/off. V2 devices support explicit on/off; V1 devices use a toggle command.
+- **Backlight** (light with brightness) - Control the device LED brightness. Uses a standard light entity with brightness slider. V1 supports levels 0-4, V2 supports levels 0-5. HA brightness (0-255) is mapped to the nearest discrete device level.
+- **Neutral Detection Control** (switch, V2 only) - Enable/disable ground/neutral monitoring on the device.
+- **Reset Energy Counter** (button) - Reset the cumulative kWh counter to zero.
+- **Clear Error History** (button) - Delete all stored error records from the device.
 - **Monitoring Switch** - Enable/disable the BLE connection. Turning monitoring off cleanly unsubscribes from notifications and disconnects, freeing the BLE connection slot (useful for ESPHome Bluetooth Proxy users with the default 3-slot limit). Turning it back on reconnects and resumes real-time data.
-- *Not Implemented yet* - Reset Power Usage Total, Relay Control, Backlight (coming in Phase 2)
+- **Auto Clock Sync** - The device clock is automatically synchronized to your HA system time on each BLE connection.
 
 ## Installation
 
@@ -129,6 +135,7 @@ Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth 
 - Output Voltage - Working (v0.7.0)
 - Temperature, Relay Status, Boost Mode, Neutral Detection - Working (v0.7.0)
 - Line 2 (50A dual-phase) - Working
+- Device commands (relay, backlight, energy reset, error delete, clock sync) - Working (v0.8.0)
 
 **If you have a Gen 2 device**, please help us by:
 1. Enabling debug logging (see below)

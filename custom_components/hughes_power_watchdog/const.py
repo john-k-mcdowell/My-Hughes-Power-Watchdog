@@ -6,7 +6,7 @@ DOMAIN = "hughes_power_watchdog"
 NAME = "Hughes Power Watchdog"
 
 # Platforms
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.LIGHT, Platform.SENSOR, Platform.SWITCH]
 
 # Configuration
 CONF_MAC_ADDRESS = "mac_address"
@@ -54,10 +54,35 @@ V2_HEADER = b"$yw@"  # 0x24797740
 V2_END_MARKER = b"q!"  # 0x7121
 V2_INIT_COMMAND = b"!%!%,protocol,open,"
 
-# V2 Message types (byte 6 in packet)
+# V2 Protocol framing constants
+V2_PROTOCOL_VERSION = 0x01
+V2_SEQUENCE_MAX = 100
+
+# V2 Message types / Command IDs (byte 6 in packet)
 V2_MSG_TYPE_DATA = 0x01  # DLReport - Live sensor data
 V2_MSG_TYPE_ERROR = 0x02  # ErrorReport - Historical error logs
-V2_MSG_TYPE_CONTROL = 0x06  # SetTime / control acknowledgment
+V2_CMD_ENERGY_RESET = 0x03  # EnergyReset - Reset kWh counter
+V2_CMD_ERROR_DEL = 0x05  # ErrorDel - Delete error log(s)
+V2_CMD_SET_TIME = 0x06  # SetTime - Sync device clock
+V2_MSG_TYPE_CONTROL = 0x06  # Alias for backward compat
+V2_CMD_SET_BACKLIGHT = 0x07  # SetBacklight - LED brightness (0-5)
+V2_CMD_SET_INIT_DATA = 0x0A  # SetInitData - Initialization handshake
+V2_CMD_SET_OPEN = 0x0B  # SetOpen - Toggle main power relay
+V2_CMD_NEUTRAL_DETECTION = 0x0D  # NeutralDetection - Enable/disable ground monitoring
+
+# V2 ResultRes acknowledgment
+V2_RESULT_SUCCESS = 0x01
+
+# V2 SetOpen payload values
+V2_RELAY_ON = 0x01
+V2_RELAY_OFF = 0x02
+
+# V2 NeutralDetection payload values
+V2_NEUTRAL_ENABLE = 0x00
+V2_NEUTRAL_DISABLE = 0x01
+
+# V2 Backlight range
+V2_BACKLIGHT_MAX = 5
 
 # V2 Data packet byte positions
 # Header fields
@@ -133,6 +158,16 @@ V1_BYTE_FREQUENCY_END = 35
 # Frequency conversion factor (int32 / 100 = Hz)
 FREQUENCY_CONVERSION_FACTOR = 100
 
+# V1 Commands (ASCII strings sent via RX characteristic)
+V1_CMD_RELAY_ON = "relayOn"
+V1_CMD_ENERGY_RESET = "reset"
+V1_CMD_DELETE_ALL_RECORDS = "deleteAllRecord"
+V1_CMD_SET_TIME = "setTime"
+V1_CMD_BACKLIGHT = "backLight"
+
+# V1 Backlight range
+V1_BACKLIGHT_MAX = 4
+
 # Legacy Data Protocol Constants
 # Device sends 40 bytes total in two 20-byte chunks
 CHUNK_SIZE = 20
@@ -185,6 +220,18 @@ SENSOR_NEUTRAL_DETECTION = "neutral_detection"
 
 # Switch keys
 SWITCH_MONITORING = "monitoring"
+SWITCH_RELAY = "relay"
+SWITCH_NEUTRAL_DETECTION_CONTROL = "neutral_detection_control"
+
+# Button keys
+BUTTON_ENERGY_RESET = "energy_reset"
+BUTTON_ERROR_DELETE = "error_delete"
+
+# Light keys
+LIGHT_BACKLIGHT = "backlight"
+
+# Sensor key for backlight current level (read from V2 data stream byte 33)
+SENSOR_BACKLIGHT = "backlight"
 
 # Error code mapping (from Hughes Power Watchdog official documentation and app source)
 # Source: PWD-3050EPO Installation & Operating Instructions manual, V1/V2 app source

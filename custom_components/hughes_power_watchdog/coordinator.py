@@ -43,9 +43,16 @@ from .const import (
     TOTAL_DATA_SIZE,
     V1_BYTE_FREQUENCY_START,
     V1_BYTE_FREQUENCY_END,
+    V1_CHARACTERISTIC_UUID_RX,
+    V1_CMD_BACKLIGHT,
+    V1_CMD_DELETE_ALL_RECORDS,
+    V1_CMD_ENERGY_RESET,
+    V1_CMD_RELAY_ON,
+    V1_CMD_SET_TIME,
     # V2 protocol constants
     DEVICE_NAME_PREFIXES_V2,
     V2_SERVICE_UUID,
+    V2_BYTE_BACKLIGHT,
     V2_BYTE_CURRENT_END,
     V2_BYTE_CURRENT_START,
     V2_BYTE_ENERGY_END,
@@ -65,12 +72,27 @@ from .const import (
     V2_BYTE_ERROR_CODE,
     V2_BYTE_RELAY_STATUS,
     V2_CHARACTERISTIC_UUID,
+    V2_CMD_ENERGY_RESET,
+    V2_CMD_ERROR_DEL,
+    V2_CMD_NEUTRAL_DETECTION,
+    V2_CMD_SET_BACKLIGHT,
+    V2_CMD_SET_OPEN,
+    V2_CMD_SET_TIME,
+    V2_END_MARKER,
     V2_HEADER,
     V2_INIT_COMMAND,
     V2_MIN_DATA_PACKET_SIZE,
     V2_MIN_ENERGY_PACKET_SIZE,
     V2_MIN_EXTENDED_PACKET_SIZE,
     V2_MSG_TYPE_DATA,
+    V2_MSG_TYPE_ERROR,
+    V2_NEUTRAL_DISABLE,
+    V2_NEUTRAL_ENABLE,
+    V2_PROTOCOL_VERSION,
+    V2_RELAY_OFF,
+    V2_RELAY_ON,
+    V2_RESULT_SUCCESS,
+    V2_SEQUENCE_MAX,
     V2_VOLTAGE_MAX,
     V2_VOLTAGE_MIN,
     # V2 dual-block constants
@@ -103,6 +125,7 @@ from .const import (
     FREQUENCY_CONVERSION_FACTOR,
     DOMAIN,
     NOTIFICATION_STALE_TIMEOUT,
+    SENSOR_BACKLIGHT,
     SENSOR_COMBINED_POWER,
     SENSOR_CURRENT_L1,
     SENSOR_CURRENT_L2,
@@ -120,6 +143,8 @@ from .const import (
     SENSOR_RELAY_STATUS,
     SENSOR_BOOST_MODE,
     SENSOR_NEUTRAL_DETECTION,
+    V1_BACKLIGHT_MAX,
+    V2_BACKLIGHT_MAX,
     ERROR_CODES,
 )
 
@@ -188,6 +213,19 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # V2 specific: track if initialization command has been sent
         self._v2_initialized: bool = False
+
+        # V2 command sequence number (cycles 1-100)
+        self._sequence_number: int = 0
+
+        # V2 command acknowledgment tracking
+        self._pending_ack: asyncio.Future | None = None
+        self._pending_ack_cmd: int | None = None
+
+        # Clock sync tracking (auto-sync once per connection session)
+        self._time_synced: bool = False
+
+        # Backlight level (read from V2 data stream, or last-set value for V1)
+        self._backlight: int | None = None
 
         # Persistent subscription tracking (both protocols use push model)
         self._v1_notifications_active: bool = False
@@ -427,6 +465,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._v2_initialized = False
                     self._v2_notifications_active = False
                     self._v1_notifications_active = False
+                    self._time_synced = False
 
     async def _monitor_connection_health(self) -> None:
         """Monitor connection health and detect stale notifications.
@@ -524,6 +563,251 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self._command_queue.put((command_func, future))
         return await future
 
+    # =========================================================================
+    # COMMAND INFRASTRUCTURE
+    # =========================================================================
+
+    def _next_sequence(self) -> int:
+        """Get next V2 command sequence number (cycles 1-100)."""
+        self._sequence_number += 1
+        if self._sequence_number > V2_SEQUENCE_MAX:
+            self._sequence_number = 1
+        return self._sequence_number
+
+    def _build_v2_command(self, cmd: int, payload: bytes = b"") -> bytes:
+        """Build a V2 protocol command packet.
+
+        Packet structure: $yw@ + version + sequence + cmd + dataLen(2B) + payload + q!
+        """
+        seq = self._next_sequence()
+        data_len = len(payload)
+        packet = (
+            V2_HEADER
+            + bytes([V2_PROTOCOL_VERSION, seq, cmd])
+            + struct.pack(">H", data_len)
+            + payload
+            + V2_END_MARKER
+        )
+        _LOGGER.debug(
+            "[%s] V2: Built command packet cmd=0x%02x seq=%d len=%d: %s",
+            self.device_name,
+            cmd,
+            seq,
+            len(packet),
+            packet.hex(),
+        )
+        return packet
+
+    async def _send_v2_command(
+        self, cmd: int, payload: bytes = b"", expect_ack: bool = True
+    ) -> bool:
+        """Send a V2 command and optionally wait for acknowledgment.
+
+        Args:
+            cmd: V2 command ID (e.g. V2_CMD_SET_OPEN).
+            payload: Command payload bytes.
+            expect_ack: If True, wait up to 5 seconds for ResultRes response.
+
+        Returns:
+            True if command was sent (and acked if expected), False on failure.
+        """
+        try:
+            client = await self._ensure_connected()
+            packet = self._build_v2_command(cmd, payload)
+
+            if expect_ack:
+                self._pending_ack = asyncio.Future()
+                self._pending_ack_cmd = cmd
+
+            await client.write_gatt_char(
+                V2_CHARACTERISTIC_UUID, packet, response=False
+            )
+            _LOGGER.info(
+                "[%s] V2: Sent command 0x%02x (%d bytes payload)",
+                self.device_name,
+                cmd,
+                len(payload),
+            )
+
+            if expect_ack:
+                try:
+                    result = await asyncio.wait_for(self._pending_ack, timeout=5.0)
+                    _LOGGER.info(
+                        "[%s] V2: Command 0x%02x ack: %s",
+                        self.device_name,
+                        cmd,
+                        "success" if result else "failed",
+                    )
+                    return result
+                except asyncio.TimeoutError:
+                    _LOGGER.warning(
+                        "[%s] V2: Command 0x%02x ack timeout (5s)",
+                        self.device_name,
+                        cmd,
+                    )
+                    return False
+                finally:
+                    self._pending_ack = None
+                    self._pending_ack_cmd = None
+
+            return True
+
+        except BleakError as err:
+            _LOGGER.error(
+                "[%s] V2: Failed to send command 0x%02x: %s",
+                self.device_name,
+                cmd,
+                err,
+            )
+            self._pending_ack = None
+            self._pending_ack_cmd = None
+            return False
+
+    async def _send_v1_command(self, command: str) -> bool:
+        """Send a V1 ASCII command via the RX characteristic.
+
+        Args:
+            command: ASCII command string (e.g. "relayOn", "reset").
+
+        Returns:
+            True if command was sent successfully, False on failure.
+        """
+        try:
+            client = await self._ensure_connected()
+            await client.write_gatt_char(
+                V1_CHARACTERISTIC_UUID_RX,
+                command.encode("ascii"),
+                response=False,
+            )
+            _LOGGER.info(
+                "[%s] V1: Sent command '%s'",
+                self.device_name,
+                command,
+            )
+            return True
+        except BleakError as err:
+            _LOGGER.error(
+                "[%s] V1: Failed to send command '%s': %s",
+                self.device_name,
+                command,
+                err,
+            )
+            return False
+
+    # =========================================================================
+    # PROTOCOL-AWARE COMMAND METHODS (called by entity classes)
+    # =========================================================================
+
+    async def async_set_relay(self, on: bool) -> bool:
+        """Set the power relay on or off.
+
+        V2: SetOpen command with explicit ON/OFF payload.
+        V1: "relayOn" command toggles the relay (no separate off command).
+
+        Args:
+            on: True to turn relay on, False to turn off.
+
+        Returns:
+            True on success, False on failure.
+        """
+        if self._is_v2_protocol:
+            payload = bytes([V2_RELAY_ON if on else V2_RELAY_OFF])
+            return await self._send_v2_command(V2_CMD_SET_OPEN, payload)
+        else:
+            # V1 relay command is a toggle — "relayOn" switches the current state
+            return await self._send_v1_command(V1_CMD_RELAY_ON)
+
+    async def async_reset_energy(self) -> bool:
+        """Reset the cumulative energy counter to zero.
+
+        Returns:
+            True on success, False on failure.
+        """
+        if self._is_v2_protocol:
+            return await self._send_v2_command(V2_CMD_ENERGY_RESET)
+        else:
+            return await self._send_v1_command(V1_CMD_ENERGY_RESET)
+
+    async def async_sync_time(self) -> bool:
+        """Sync the device clock to the current system time.
+
+        V2: SetTime with 6-byte payload [yr-2000, month+1, day, hr, min, sec].
+        V1: "setTime" ASCII command.
+
+        Returns:
+            True on success, False on failure.
+        """
+        if self._is_v2_protocol:
+            from datetime import datetime
+
+            now = datetime.now()
+            payload = bytes([
+                now.year - 2000,
+                now.month + 1,
+                now.day,
+                now.hour,
+                now.minute,
+                now.second,
+            ])
+            _LOGGER.debug(
+                "[%s] V2: SetTime payload: %s",
+                self.device_name,
+                payload.hex(),
+            )
+            return await self._send_v2_command(V2_CMD_SET_TIME, payload)
+        else:
+            return await self._send_v1_command(V1_CMD_SET_TIME)
+
+    async def async_set_backlight(self, level: int) -> bool:
+        """Set the device backlight/LED brightness.
+
+        Args:
+            level: Brightness level (0-5 for V2, 0-4 for V1).
+
+        Returns:
+            True on success, False on failure.
+        """
+        if self._is_v2_protocol:
+            level = max(0, min(level, V2_BACKLIGHT_MAX))
+            return await self._send_v2_command(
+                V2_CMD_SET_BACKLIGHT, bytes([level])
+            )
+        else:
+            level = max(0, min(level, V1_BACKLIGHT_MAX))
+            # V1 backLight command includes the level value
+            return await self._send_v1_command(f"{V1_CMD_BACKLIGHT}{level}")
+
+    async def async_set_neutral_detection(self, enable: bool) -> bool:
+        """Enable or disable neutral detection monitoring (V2 only).
+
+        Args:
+            enable: True to enable monitoring, False to disable.
+
+        Returns:
+            True on success, False on failure.
+        """
+        if not self._is_v2_protocol:
+            _LOGGER.warning(
+                "[%s] Neutral detection control is only available on V2 devices",
+                self.device_name,
+            )
+            return False
+        payload = bytes([V2_NEUTRAL_ENABLE if enable else V2_NEUTRAL_DISABLE])
+        return await self._send_v2_command(V2_CMD_NEUTRAL_DETECTION, payload)
+
+    async def async_delete_errors(self) -> bool:
+        """Delete all error history from the device.
+
+        Returns:
+            True on success, False on failure.
+        """
+        if self._is_v2_protocol:
+            return await self._send_v2_command(
+                V2_CMD_ERROR_DEL, bytes([0xFF])
+            )
+        else:
+            return await self._send_v1_command(V1_CMD_DELETE_ALL_RECORDS)
+
     async def _request_device_status(self) -> None:
         """Request current status from device.
 
@@ -578,6 +862,14 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 # Wait briefly for initial data
                 await asyncio.sleep(DATA_COLLECTION_TIMEOUT)
+
+            # Auto-sync clock on first connect
+            if not self._time_synced and self._v1_notifications_active:
+                self._time_synced = True
+                try:
+                    await self.async_sync_time()
+                except Exception as err:  # pylint: disable=broad-except
+                    _LOGGER.debug("[%s] V1: Auto time sync failed: %s", self.device_name, err)
 
             self._last_activity_time = time.time()
 
@@ -640,6 +932,14 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 # Wait briefly for initial data
                 await asyncio.sleep(DATA_COLLECTION_TIMEOUT)
+
+            # Auto-sync clock on first connect
+            if not self._time_synced and self._v2_notifications_active:
+                self._time_synced = True
+                try:
+                    await self.async_sync_time()
+                except Exception as err:  # pylint: disable=broad-except
+                    _LOGGER.debug("[%s] V2: Auto time sync failed: %s", self.device_name, err)
 
             self._last_activity_time = time.time()
 
@@ -922,14 +1222,35 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             len(data),
         )
 
+        # Check for command acknowledgment (ResultRes)
+        if msg_type not in (V2_MSG_TYPE_DATA, V2_MSG_TYPE_ERROR):
+            if self._pending_ack and self._pending_ack_cmd == msg_type:
+                # ResultRes: 1-byte payload, 0x01 = success
+                payload_start = 9  # After 9-byte header
+                success = (
+                    len(data) > payload_start
+                    and data[payload_start] == V2_RESULT_SUCCESS
+                )
+                _LOGGER.debug(
+                    "[%s] V2: ResultRes for cmd 0x%02x: %s (raw: %s)",
+                    self.device_name,
+                    msg_type,
+                    "success" if success else "failed",
+                    data.hex(),
+                )
+                if not self._pending_ack.done():
+                    self._pending_ack.set_result(success)
+            else:
+                _LOGGER.debug(
+                    "[%s] V2: Non-data packet (type 0x%02x): %s",
+                    self.device_name,
+                    msg_type,
+                    data.hex(),
+                )
+            return
+
         # Only parse data packets (DLReport, type 0x01)
         if msg_type != V2_MSG_TYPE_DATA:
-            _LOGGER.debug(
-                "[%s] V2: Skipping non-data packet (type 0x%02x): %s",
-                self.device_name,
-                msg_type,
-                data.hex(),
-            )
             return
 
         try:
@@ -1029,6 +1350,9 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         out_v_raw = struct.unpack(">I", out_v_bytes)[0]
         output_voltage = out_v_raw / DATA_CONVERSION_FACTOR
         self._output_voltage = output_voltage
+
+        # Backlight level (byte 33, 0-5)
+        self._backlight = data[V2_BYTE_BACKLIGHT]
 
         # Neutral detection status (byte 34, 0x00 = OK)
         neutral_det = data[V2_BYTE_NEUTRAL_DETECTION]
@@ -1225,6 +1549,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data[SENSOR_RELAY_STATUS] = self._relay_status
         data[SENSOR_BOOST_MODE] = self._boost_mode
         data[SENSOR_NEUTRAL_DETECTION] = self._neutral_detection
+        data[SENSOR_BACKLIGHT] = self._backlight
 
         _LOGGER.debug("Built data dict: %s", data)
         return data
