@@ -37,6 +37,11 @@ async def async_setup_entry(
         config_entry.entry_id
     ]
 
+    # Command entities are only exposed on V2 devices. V1 command support is
+    # still being reverse-engineered — writes succeed but the device ignores them.
+    if not coordinator.is_v2_protocol:
+        return
+
     async_add_entities([HughesPowerWatchdogBacklightLight(coordinator)])
 
 

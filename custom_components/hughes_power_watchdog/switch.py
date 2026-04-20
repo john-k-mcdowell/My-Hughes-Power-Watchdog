@@ -36,11 +36,12 @@ async def async_setup_entry(
 
     entities = [
         HughesPowerWatchdogMonitoringSwitch(coordinator),
-        HughesPowerWatchdogRelaySwitch(coordinator),
     ]
 
-    # Neutral detection control is V2 only
+    # Command entities are only exposed on V2 devices. V1 command support is
+    # still being reverse-engineered — writes succeed but the device ignores them.
     if coordinator.is_v2_protocol:
+        entities.append(HughesPowerWatchdogRelaySwitch(coordinator))
         entities.append(HughesPowerWatchdogNeutralDetectionControlSwitch(coordinator))
 
     async_add_entities(entities)

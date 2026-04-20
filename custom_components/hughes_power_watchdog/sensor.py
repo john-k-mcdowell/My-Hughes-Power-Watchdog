@@ -74,12 +74,10 @@ async def async_setup_entry(
             HughesPowerWatchdogFrequencyLineSensor(coordinator, SENSOR_FREQUENCY_L2, "Line 2"),
         ])
 
-    # V2-only sensors (these fields don't exist in the V1 protocol)
-    if coordinator.is_v2_protocol:
-        # Output voltage only available on booster models (V8/V9/E8/E9).
-        # On V5/E5/V6/E6, the field mirrors energy and is suppressed.
-        if coordinator.has_booster:
-            sensors.append(HughesPowerWatchdogOutputVoltageSensor(coordinator))
+    # Booster-only sensors (V8/V9/E8/E9 only). On V5/E5/V6/E6, output voltage
+    # mirrors the energy counter and temperature reads as zero.
+    if coordinator.is_v2_protocol and coordinator.has_booster:
+        sensors.append(HughesPowerWatchdogOutputVoltageSensor(coordinator))
         sensors.append(HughesPowerWatchdogTemperatureSensor(coordinator))
 
     async_add_entities(sensors)

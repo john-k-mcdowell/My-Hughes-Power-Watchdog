@@ -57,13 +57,15 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 - **Error Description** (text)
 - **Frequency Line 1** (Hz) - AC power line frequency
 
-**Gen 2 (V2) Booster Models Only (V8/V9/E8/E9):**
-- **Output Voltage** (volts) - Voltage after autoformer adjustment (suppressed on V5/E5/V6/E6 devices where this field mirrors the energy counter)
+**Gen 2 (V2) Booster Models Only (V8/V9/E8/E9) — _untested_:**
+- **Output Voltage** (volts) - Voltage after autoformer adjustment (field mirrors the energy counter on non-booster V5/E5/V6/E6 devices, so it is hidden there)
+- **Temperature** (°C) - Device temperature (reads zero on non-booster models)
+- **Boost Mode** - Whether the autoformer boost is active (binary sensor)
+
+> These three sensors are only created for V8/V9/E8/E9 models and have **not yet been validated** on hardware. Please report results via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues).
 
 **Gen 2 (V2) Models Only:**
-- **Temperature** (°C) - Device temperature (shown when non-zero)
 - **Relay Status** - Whether the power relay is ON or tripped (binary sensor)
-- **Boost Mode** - Whether the autoformer boost is active (binary sensor)
 - **Neutral Detection** - Ground/neutral monitoring status (binary sensor)
 
 **50 Amp (Dual-Line) Units Only:**
@@ -75,13 +77,18 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 
 ### Device Controls (v0.8.0)
 
-- **Power Relay** (switch) - Turn the power relay on/off. V2 devices support explicit on/off; V1 devices use a toggle command.
-- **Backlight** (light with brightness) - Control the device LED brightness. Uses a standard light entity with brightness slider. V1 supports levels 0-4, V2 supports levels 0-5. HA brightness (0-255) is mapped to the nearest discrete device level.
-- **Neutral Detection Control** (switch, V2 only) - Enable/disable ground/neutral monitoring on the device.
+> **Gen 1 (V1) device commands are a work in progress.** BLE writes succeed but the device currently ignores them, so command entities (Power Relay, Backlight, Reset Energy, Clear Error History) are **only exposed on Gen 2 (V2) devices** until the V1 wire format is reverse-engineered. The underlying code remains in the codebase.
+
+**Gen 2 (V2) devices:**
+- **Power Relay** (switch) - Turn the power relay on/off.
+- **Backlight** (light with brightness) - Control the device LED brightness (levels 0-5; HA brightness 0-255 is mapped to the nearest discrete level).
 - **Reset Energy Counter** (button) - Reset the cumulative kWh counter to zero.
 - **Clear Error History** (button) - Delete all stored error records from the device.
-- **Monitoring Switch** - Enable/disable the BLE connection. Turning monitoring off cleanly unsubscribes from notifications and disconnects, freeing the BLE connection slot (useful for ESPHome Bluetooth Proxy users with the default 3-slot limit). Turning it back on reconnects and resumes real-time data.
+- **Neutral Detection Control** (switch) - Enable/disable ground/neutral monitoring on the device. _Untested — please report results._
 - **Auto Clock Sync** - The device clock is automatically synchronized to your HA system time on each BLE connection.
+
+**All devices:**
+- **Monitoring Switch** - Enable/disable the BLE connection. Turning monitoring off cleanly unsubscribes from notifications and disconnects, freeing the BLE connection slot (useful for ESPHome Bluetooth Proxy users with the default 3-slot limit). Turning it back on reconnects and resumes real-time data.
 
 ## Installation
 
@@ -134,10 +141,11 @@ Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth 
 - Real-time push updates (v0.6.0) - Working
 - Error codes - Working (v0.7.0)
 - Frequency - Working (v0.7.0)
-- Output Voltage - Working (v0.7.0)
-- Temperature, Relay Status, Boost Mode, Neutral Detection - Working (v0.7.0)
 - Line 2 (50A dual-phase) - Working
-- Device commands (relay, backlight, energy reset, error delete, clock sync) - Working (v0.8.0)
+- Relay Status, Neutral Detection - Working (v0.7.0)
+- Device commands — relay, backlight, energy reset, error delete, clock sync - Working (v0.8.0)
+- Output Voltage, Temperature, Boost Mode (booster models V8/V9/E8/E9 only) - **Untested**
+- Neutral Detection Control switch - **Untested**
 
 **If you have a Gen 2 device**, please help us by:
 1. Enabling debug logging (see below)

@@ -44,7 +44,6 @@ from .const import (
     V1_BYTE_FREQUENCY_START,
     V1_BYTE_FREQUENCY_END,
     V1_CHARACTERISTIC_UUID_CMD,
-    V1_CHARACTERISTIC_UUID_RX,
     V1_CMD_BACKLIGHT,
     V1_CMD_DELETE_ALL_RECORDS,
     V1_CMD_ENERGY_RESET,
@@ -292,16 +291,6 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug(
                 "[%s] Available services: %s", self.device_name, service_uuids
             )
-            # Log all characteristics with properties for GATT profile analysis
-            for service in services:
-                for char in service.characteristics:
-                    _LOGGER.debug(
-                        "[%s] GATT: service=%s char=%s properties=%s",
-                        self.device_name,
-                        service.uuid,
-                        char.uuid,
-                        char.properties,
-                    )
 
             if V2_SERVICE_UUID.lower() in service_uuids:
                 _LOGGER.info(
@@ -693,60 +682,31 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return False
 
     async def _send_v1_command(self, command: str) -> bool:
-        """Send a V1 ASCII command, trying multiple characteristics.
+        """Send a V1 ASCII command to the device.
+
+        Note: V1 command wire format is still being reverse-engineered.
+        Writes currently succeed but the device silently ignores them.
+        Command entities (buttons/switches/light) are not exposed for V1
+        devices until this is resolved.
 
         Args:
             command: ASCII command string (e.g. "relayOn", "reset").
 
         Returns:
-            True if command was sent successfully, False on failure.
+            True if the BLE write succeeded, False on failure.
         """
-        # Writable characteristics under the ffe0 service
-        candidates = [
-            (V1_CHARACTERISTIC_UUID_CMD, True),   # 1003: write-only
-            ("00001005-0000-1000-8000-00805f9b34fb", True),   # 1005: read+write
-            (V1_CHARACTERISTIC_UUID_RX, False),    # fff5: write-no-response
-        ]
-        # Encodings to try: raw ASCII, then with \r\n
-        encodings = [
-            ("ascii", command.encode("ascii")),
-            ("ascii+CRLF", command.encode("ascii") + b"\r\n"),
-        ]
-
         try:
             client = await self._ensure_connected()
-
-            for char_uuid, use_response in candidates:
-                for enc_name, cmd_bytes in encodings:
-                    try:
-                        _LOGGER.info(
-                            "[%s] V1: Trying '%s' [%s] (%s) -> %s (response=%s)",
-                            self.device_name,
-                            command,
-                            enc_name,
-                            cmd_bytes.hex(),
-                            char_uuid,
-                            use_response,
-                        )
-                        await client.write_gatt_char(
-                            char_uuid, cmd_bytes, response=use_response,
-                        )
-                        _LOGGER.info(
-                            "[%s] V1: Write OK: '%s' [%s] -> %s",
-                            self.device_name,
-                            command,
-                            enc_name,
-                            char_uuid,
-                        )
-                    except BleakError as err:
-                        _LOGGER.warning(
-                            "[%s] V1: Write FAILED: '%s' [%s] -> %s: %s",
-                            self.device_name,
-                            command,
-                            enc_name,
-                            char_uuid,
-                            err,
-                        )
+            cmd_bytes = command.encode("ascii")
+            await client.write_gatt_char(
+                V1_CHARACTERISTIC_UUID_CMD, cmd_bytes, response=True,
+            )
+            _LOGGER.info(
+                "[%s] V1: Sent command '%s' (%d bytes)",
+                self.device_name,
+                command,
+                len(cmd_bytes),
+            )
             return True
         except BleakError as err:
             _LOGGER.error(

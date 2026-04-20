@@ -38,11 +38,16 @@ async def async_setup_entry(
     if not coordinator.is_v2_protocol:
         return
 
-    async_add_entities([
+    entities = [
         HughesPowerWatchdogRelayStatusSensor(coordinator),
-        HughesPowerWatchdogBoostModeSensor(coordinator),
         HughesPowerWatchdogNeutralDetectionSensor(coordinator),
-    ])
+    ]
+
+    # Boost mode only applies to booster/autoformer models (V8/V9/E8/E9)
+    if coordinator.has_booster:
+        entities.append(HughesPowerWatchdogBoostModeSensor(coordinator))
+
+    async_add_entities(entities)
 
 
 class HughesPowerWatchdogBinarySensor(
