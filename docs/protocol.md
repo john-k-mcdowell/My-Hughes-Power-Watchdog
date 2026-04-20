@@ -1,9 +1,23 @@
 # Hughes Power Watchdog BLE Protocol Documentation
 
-This document describes the two Bluetooth Low Energy (BLE) protocols used by Hughes Power Watchdog devices. Protocol details are based on the ESPHome implementation (V1), Bluetooth HCI captures, and reverse engineering of the official Android application source code (`powerwatchdog2` for V1, `com.yw.watchdog` for V2).
+This document describes the two Bluetooth Low Energy (BLE) protocols used by Hughes Power Watchdog devices.
 
-- **V1 protocol** - Used by Gen 1 devices (Bluetooth only, model suffix EPO)
-- **V2 protocol** - Used by Gen 2 devices (WiFi + Bluetooth, model suffix EPOW)
+- **V1 protocol** — Used by Gen 1 devices (Bluetooth only, model suffix EPO)
+- **V2 protocol** — Used by Gen 2 devices (WiFi + Bluetooth, model suffix EPOW)
+
+### Sources
+
+V1 protocol details are drawn from three independent sources:
+
+1. The original [ESPHome implementation](https://github.com/spbrogan/esphome/tree/PolledSensor/esphome/components/hughes_power_watchdog) by spbrogan, tango2590, and makifoxgirl.
+2. **Live Bluetooth HCI captures** and runtime testing against a real Gen 1 device (PWD50-EPD / PWD-VM-30A) during development of this integration.
+3. Reverse engineering of the official `powerwatchdog2` Android application (ASCII command strings, ack responses, error record format).
+
+V2 protocol details are drawn from:
+
+1. Live Bluetooth HCI captures against real Gen 2 devices (PWD30EPOW / PWD50EPOW).
+2. Reverse engineering of the `com.yw.watchdog` Android application source (`Cmd.java`, `Protocol.java`, `Package.java`, `DeviceManager.java`).
+3. Cross-referenced against the [TechBlueprints/dbus-power-watchdog](https://github.com/TechBlueprints/dbus-power-watchdog) Venus OS implementation, which provides independent decoders (`power_watchdog_proto_gen1.py`, `power_watchdog_proto_gen2.py`) and per-generation specs (`PROTOCOL-GEN1.md`, `PROTOCOL-GEN2.md`). This reference clarified several fields previously listed as "unknown" here — see the notes below.
 
 ## Device Generations
 
@@ -26,7 +40,7 @@ The V2 protocol header `$yw@` corresponds to the `com.yw.watchdog` package name 
 | Data Size | 40 bytes (2x20-byte chunks) | Variable (45 bytes single-block, 79 bytes dual-block) |
 | Initialization | None (subscribe to notifications) | Send `!%!%,protocol,open,` |
 | Line Support | Dual-line (50A models send separate packets) | Single-block (30A) or dual-block (50A) |
-| Data Encoding | Big-endian signed int32 / 10000 | Big-endian unsigned int32 / 10000 |
+| Data Encoding | Big-endian int32 / 10000 (values always non-negative in practice; see note under V1 packet structure) | Big-endian unsigned int32 / 10000 |
 | Commands | ASCII strings via RX characteristic | Binary `$yw@` framed packets via bidirectional characteristic |
 
 ## Protocol Detection
@@ -57,15 +71,23 @@ Error codes are shared across both protocols (from Hughes official documentation
 | 11 | F1 | Frequency error |
 | 12 | F2 | Frequency error |
 
-**Note:** The V2 Protocol doc's reference to "E8/E9 models" in the temperature field annotation refers to these error codes, NOT hardware model numbers. No E8/E9 hardware models exist.
+**Naming note:** Don't confuse error codes `E8`/`E9` with Hughes hardware model suffixes. Both exist:
+- **Error codes `E8`/`E9`** are the numeric fault codes above.
+- **Hardware models `E8`/`V8`/`E9`/`V9`** are the autoformer "booster" variants that can regulate output voltage. Non-booster model suffixes are `V5`/`E5`/`V6`/`E6`/`V7`/`E7`.
+
+The booster vs non-booster distinction matters because several V2 data-packet fields (output voltage, temperature, boost mode) only carry meaningful values on booster hardware.
 
 ---
 
 ## Gen 1 V1 Protocol (PMD/PWS/PMS)
 
-Used by Gen 1 Bluetooth-only devices (EPO models). Based on the ESPHome implementation by spbrogan, tango2590, and makifoxgirl, with additional fields identified from the `powerwatchdog2` Android app source.
+Used by Gen 1 Bluetooth-only devices (EPO models). Compiled from three sources:
 
-Source: https://github.com/spbrogan/esphome/tree/PolledSensor/esphome/components/hughes_power_watchdog
+1. Original [ESPHome implementation](https://github.com/spbrogan/esphome/tree/PolledSensor/esphome/components/hughes_power_watchdog) by spbrogan, tango2590, and makifoxgirl — confirmed the TX characteristic, header, and core data fields (voltage, current, power, energy).
+2. Live runtime testing of this integration against real Gen 1 hardware (PWD50-EPD and PWD-VM-30A) — confirmed the frequency field, the line-ID markers for 50A dual-line devices, and the two-chunk reassembly behavior.
+3. Reverse engineering of the `powerwatchdog2` Android app — provided the ASCII command strings, ack responses, and 16-byte error record format.
+
+The independent [TechBlueprints/dbus-power-watchdog](https://github.com/TechBlueprints/dbus-power-watchdog) implementation corroborates the same byte layout.
 
 ### GATT Profile
 
@@ -85,6 +107,8 @@ Source: https://github.com/spbrogan/esphome/tree/PolledSensor/esphome/components
 ### Data Packet Structure (40 bytes)
 
 The device sends 40 bytes in two 20-byte BLE notification chunks. The chunks are buffered and parsed together.
+
+> **Signed vs unsigned:** This integration decodes V1 fields as big-endian *signed* int32 (following the ESPHome reference); TechBlueprints/dbus-power-watchdog decodes them as *unsigned*. Either is correct in practice — voltage, current, power, and energy are always non-negative, so the high bit is never set in normal operation.
 
 #### Chunk 1 (bytes 0-19)
 
@@ -129,12 +153,25 @@ Historical errors are transmitted in 16-byte chunks. Identified by ASCII `Er` at
 | 14 | 1 | Trailer | `45` (ASCII `E`) |
 | 15 | 1 | ErrorCode | Error code ID (1-9 for E1-E9, 11=F1, 12=F2) |
 
-### V1 Commands (App -> Device)
+### V1 Commands (App -> Device) — **Work in Progress**
 
-Commands are sent as ASCII strings via the RX characteristic (`0000fff5-...`). The device responds with ASCII acknowledgment strings.
+> **Status (as of v0.8.0-beta.8): V1 command support is not yet functional.** BLE writes are accepted by the device (the characteristic acknowledges the write at the GATT layer) but the Power Watchdog takes no action — no relay toggle, no energy reset, no ack string over the notification channel. The exact wire format used by the official `powerwatchdog2` app has not been captured yet and is still to be determined.
+>
+> During beta testing, the following combinations were all tried and all silently ignored by the device:
+> - Characteristic `0xfff5` with write-without-response
+> - Characteristic `0xfff5` with write-with-response
+> - Characteristic `0x1003` (discovered via GATT enumeration) with write-with-response
+> - Characteristic `0x1005` with write-with-response
+> - ASCII payload with no terminator, and with `\r\n` terminator
+>
+> Until an HCI capture from the official Android app reveals the correct framing, **V1 command entities (relay switch, backlight light, energy-reset button, error-delete button) are hidden from Home Assistant on V1 devices.** The code paths remain in the codebase (`_send_v1_command` in `coordinator.py`) for future work.
+>
+> The [TechBlueprints/dbus-power-watchdog](https://github.com/TechBlueprints/dbus-power-watchdog) reference implementation also does not send any V1 commands — its Gen 1 handler is explicitly receive-only, noting "Gen1 streams telemetry without a handshake."
 
-| Command | Ack String | Description |
-|---------|-----------|-------------|
+The ASCII command strings observed in the Android app (likely candidates once the wire format is understood):
+
+| Command | Expected Ack String | Description |
+|---------|-------------------|-------------|
 | `relayOn` | `"relay on"` | Turn power relay on |
 | `reset` | `"RESET"` | Reset accumulated kWh to 0 |
 | `deleteIndexRecord` | `"del:rec"` | Delete specific error record |
@@ -142,6 +179,8 @@ Commands are sent as ASCII strings via the RX characteristic (`0000fff5-...`). T
 | `setTime` | `"set:t"` | Sync device clock to phone |
 | `backLight` | `"set:blX"` | Set LED brightness (0-4) |
 | `powerOnTime` | `"power on time:" + 5 bytes` | Request last power-on date/time |
+
+The integration currently writes the bare ASCII string to characteristic `0x1003` with write-with-response; the device accepts the write but does not act on it.
 
 ### Decoding Example (Python)
 
@@ -253,12 +292,12 @@ Each 34-byte block contains:
 | 4-7 | 4 | Current | BE uint32 / 10000 (A) |
 | 8-11 | 4 | Power | BE uint32 / 10000 (W) |
 | 12-15 | 4 | Energy | BE uint32 / 10000 (kWh) |
-| 16-19 | 4 | temp1 | Internal/unknown |
-| 20-23 | 4 | Output Voltage | BE uint32 / 10000 (V) |
+| 16-19 | 4 | temp1 (reserved) | Not used by current firmware |
+| 20-23 | 4 | Output Voltage | BE uint32 / 10000 (V) — booster models only |
 | 24 | 1 | Backlight | LED brightness (0-5) |
 | 25 | 1 | Neutral Detection | `0x00` = OK |
-| 26 | 1 | Boost Mode | `0x00`=off, `0x01`=active |
-| 27 | 1 | Temperature | Degrees Celsius |
+| 26 | 1 | Boost Mode | `0`=off, `1`=active — booster models only |
+| 27 | 1 | Temperature | Degrees Celsius — booster models only |
 | 28-31 | 4 | Frequency | BE uint32 / 100 (Hz) |
 | 32 | 1 | Error Code | 0=OK, 1=E1, etc. |
 | 33 | 1 | Relay Status | `0x00`=ON, `0x01`/`0x02`=OFF/Error |
@@ -271,15 +310,15 @@ Each 34-byte block contains:
 | 13-16 | Current (L1) | |
 | 17-20 | Power (L1) | |
 | 21-24 | Energy (L1) | |
-| 25-28 | temp1 | Internal/unknown - log for analysis |
-| 29-32 | Output Voltage | Booster models (V8/V9/E8/E9) only; mirrors energy counter on V5/E5/V6/E6 |
-| 33 | Backlight | |
-| 34 | Neutral Detection | |
-| 35 | Boost Mode | |
-| 36 | Temperature (°C) | May only be populated on certain devices |
-| 37-40 | Frequency (Hz) | Confirmed: e.g. 6000 = 60.00 Hz |
-| 41 | Error Code | |
-| 42 | Relay Status | |
+| 25-28 | temp1 (reserved) | Firmware-reserved, not used. Per the TechBlueprints `PROTOCOL-GEN2.md`: "Temperature 1 (offset 16): Reserved; not used in current firmware." |
+| 29-32 | Output Voltage | **Booster models only** (V8/V9/E8/E9). On V5/E5/V6/E6/V7/E7 the firmware repurposes these bytes to mirror the energy counter, so implementations must suppress this field on non-booster models. |
+| 33 | Backlight | 0-5 |
+| 34 | Neutral Detection | `0x00` = OK, non-zero = problem |
+| 35 | Boost Mode | **Booster models only** (V8/V9/E8/E9). `0`=off, `1`=active. Reads `0` on non-booster models. |
+| 36 | Temperature (°C) | **Booster models only** (V8/V9/E8/E9). Device internal temperature; reads `0` on non-booster models. Device firmware triggers an over-temp alarm at 74 °C. |
+| 37-40 | Frequency (Hz) | BE uint32 / 100. E.g. 6000 = 60.00 Hz |
+| 41 | Error Code | 0 = OK, 1-9 = E1-E9, 11-12 = F1-F2 |
+| 42 | Relay Status | `0x00` = ON, `0x01`/`0x02` = OFF/tripped |
 
 #### Dual-Block Layout (50A devices, payload length 0x0044 = 68 bytes)
 
@@ -388,30 +427,34 @@ def decode_v2_packet(data: bytes) -> dict:
 
 ---
 
-## What We Don't Know Yet
+## Open Questions
 
 ### Gen 1 V1 Protocol
 
-| Item | Notes |
-|------|-------|
-| Bytes 20-30 (Chunk 2) | 11 bytes of unknown data |
-| Bytes 35-36 (Chunk 2) | 2 bytes between frequency and line ID |
-| Command byte construction | ASCII command strings are known, but exact byte construction in `BluetoothService.txCommand()` is abstracted |
+| Item | Status |
+|------|--------|
+| **Command wire format** | **Unknown.** ASCII strings like `relayOn`, `reset`, `setTime`, `backLight`, `deleteAllRecord` are confirmed from the Android app, but the exact on-the-wire framing is not. Every combination tested so far (write-with/without-response to characteristics `0xfff5`, `0x1003`, `0x1005`, with and without `\r\n`) is accepted at the GATT layer but produces no visible effect on the device. The next step is to capture a live HCI trace from the official `powerwatchdog2` app while pressing a command button. |
+| Chunk 2 bytes 20-30 (11 bytes) | Not parsed. Not parsed by the TechBlueprints reference either. Likely firmware-internal state. |
+| Chunk 2 bytes 35-36 (2 bytes) | Not parsed, purpose unclear — sit between frequency and the line ID. |
 
 ### Gen 2 V2 Protocol
 
-| Item | Notes |
-|------|-------|
-| Bytes 25-28 (temp1) | Always present, purpose unknown. Debug-logged for beta tester analysis |
-| Temperature field | Byte 36 in single-block. App source labels it for "E8/E9 models" but those are error codes, not models. Parsed for all V2 devices; beta testing will reveal which devices populate it |
-| Sub-device commands | SubDeviceAdd/Del/List (0x31-0x33) for wireless outlet sensors - not implemented |
-| Alarm (0x0E) | Zero-payload push alert from device - not implemented |
+| Item | Status |
+|------|--------|
+| Sub-device commands (0x31-0x33) | Not implemented. For pairing wireless outlet sensors — no hardware available for testing. |
+| Alarm push (0x0E) | Not implemented. Zero-payload push alert from device. |
+| SetInitData (0x0A) | Not used. The integration's `!%!%,protocol,open,` init string works; SetInitData with the 15-byte magic array may be more robust but has not been needed. |
+| Booster-only sensor validation | Output voltage, temperature, and boost mode are gated to V8/V9/E8/E9 models but have **not yet been validated against real booster hardware**. Seeking beta testers. |
+| Neutral-detection control switch | The `NeutralDetection` (0x0D) command is implemented but has **not been validated** on a real device — needs beta testing. |
 
-### Testing Needed
+### Resolved Since Earlier Drafts
 
-- **V6/E6 devices**: WD_V6 confirmed on HA community forums. WD_E6 inferred from pattern. SetInitData device flag differs for these (`0x01` vs `0x5A`)
-- **Temperature field**: Which devices populate byte 36 with meaningful values?
-- **Sub-device support**: No hardware available for testing wireless outlet sensor pairing
+Several items previously listed as "unknown" have been clarified — primarily thanks to cross-referencing the [TechBlueprints/dbus-power-watchdog](https://github.com/TechBlueprints/dbus-power-watchdog) Venus OS implementation:
+
+- **V2 bytes 25-28 (`temp1`):** firmware-reserved, not used. Previously listed as "purpose unknown."
+- **V2 temperature (byte 36):** booster-model exclusive (V8/V9/E8/E9). Reads `0` on non-booster models; over-temp alarm fires at 74 °C.
+- **V2 boost mode (byte 35):** booster-model exclusive. Reads `0` on non-booster models.
+- **V2 output voltage (bytes 29-32):** confirmed to mirror the energy counter on V5/E5/V6/E6/V7/E7 and hold the real regulated voltage only on V8/V9/E8/E9. Now gated by `has_booster` in the integration.
 
 ---
 

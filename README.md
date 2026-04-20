@@ -195,6 +195,8 @@ Based on the original ESPHome implementation by:
 V1/V2 protocol documentation reverse-engineered from the Android app source by:
 - [gearhead765](https://github.com/gearhead765)
 
+Additional protocol details cross-referenced against the independent [TechBlueprints/dbus-power-watchdog](https://github.com/TechBlueprints/dbus-power-watchdog) Venus OS D-Bus service, which clarified the booster-model gating for V2 output voltage, temperature, and boost mode. See [docs/protocol.md](docs/protocol.md) for details.
+
 ### Contributors
 - [IAmTheMitchell](https://github.com/IAmTheMitchell) — Gen 2 WD_E5 device support, V2 50A Line 2 sensor fix, protocol documentation for dual-block packet format
 
