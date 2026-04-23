@@ -48,6 +48,7 @@ class HughesPowerWatchdogConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         assert self._discovery_info is not None
 
         if user_input is not None:
+            self._abort_if_unique_id_configured()
             return self.async_create_entry(
                 title=self._discovery_info.name,
                 data={CONF_ADDRESS: self._discovery_info.address},
