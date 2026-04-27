@@ -217,6 +217,9 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # V2 command sequence number (cycles 1-100)
         self._sequence_number: int = 0
 
+        # Error record log (populated by V1/V2 error packet parsers)
+        self._errors: list[dict[str, Any]] = []
+
         # V2 command acknowledgment tracking
         self._pending_ack: asyncio.Future | None = None
         self._pending_ack_cmd: int | None = None
@@ -831,6 +834,13 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             return await self._send_v1_command(V1_CMD_DELETE_ALL_RECORDS)
 
+    async def async_delete_error_record(self, record_id: int) -> bool:
+        """Delete a specific error record by ID (V2 only)."""
+        if self._is_v2_protocol:
+            payload = struct.pack(">B", record_id)
+            return await self._send_v2_command(V2_CMD_ERROR_DEL, payload)
+        return False
+
     async def _request_device_status(self) -> None:
         """Request current status from device.
 
@@ -1034,6 +1044,12 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             sender,
             data.hex(),
         )
+
+        # Check if this is a V1 error record (starts with 'Er' = 0x45 0x72)
+        if len(data) >= 2 and data[0:2] == b'\x45\x72':
+            self._parse_error_packet_v1(bytes(data))
+            self.async_set_updated_data(self._build_data_dict())
+            return
 
         # Append data to buffer
         self._data_buffer.extend(data)
@@ -1270,6 +1286,11 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     msg_type,
                     data.hex(),
                 )
+            return
+
+        if msg_type == V2_MSG_TYPE_ERROR:
+            self._parse_error_packet_v2(data)
+            self.async_set_updated_data(self._build_data_dict())
             return
 
         # Only parse data packets (DLReport, type 0x01)
@@ -1536,6 +1557,78 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 l2_relay,
             )
 
+    def _parse_error_packet_v1(self, data: bytes) -> None:
+        """Parse a single V1 error record (16-byte chunk starting with 'Er' = 0x4572)."""
+        if len(data) < 16 or data[0:2] != b'\x45\x72':
+            return
+
+        record_id = data[2]
+        s_year, s_month, s_day, s_hour, s_min = data[4], data[5], data[6], data[7], data[8]
+        start_time = f"20{s_year:02d}-{s_month:02d}-{s_day:02d} {s_hour:02d}:{s_min:02d}"
+
+        e_year = data[9]
+        if e_year == 0x55:
+            end_time = "Ongoing"
+        else:
+            e_month, e_day, e_hour, e_min = data[10], data[11], data[12], data[13]
+            end_time = f"20{e_year:02d}-{e_month:02d}-{e_day:02d} {e_hour:02d}:{e_min:02d}"
+
+        error_code_id = data[15]
+        error_string = ERROR_CODES.get(error_code_id, f"Unknown Error ({error_code_id})")
+
+        record = {
+            "record_id": record_id,
+            "error_code": error_code_id,
+            "description": error_string,
+            "start_time": start_time,
+            "end_time": end_time,
+        }
+
+        for i, existing in enumerate(self._errors):
+            if existing["record_id"] == record_id:
+                self._errors[i] = record
+                _LOGGER.debug("[%s] V1: Updated error record %d: %s", self.device_name, record_id, error_string)
+                return
+
+        self._errors.append(record)
+        _LOGGER.debug("[%s] V1: Parsed error record %d: %s", self.device_name, record_id, error_string)
+
+    def _parse_error_packet_v2(self, data: bytes | bytearray) -> None:
+        """Parse V2 ErrorReport packet (0x02): 16-byte records starting at payload offset 9."""
+        payload_len = struct.unpack(">H", data[7:9])[0]
+        payload = data[9:9 + payload_len]
+
+        parsed_errors = []
+        for i in range(0, len(payload), 16):
+            chunk = payload[i:i + 16]
+            if len(chunk) < 16:
+                break
+
+            record_id = chunk[2]
+            s_year, s_month, s_day, s_hour, s_min = chunk[4], chunk[5], chunk[6], chunk[7], chunk[8]
+            start_time = f"20{s_year:02d}-{s_month:02d}-{s_day:02d} {s_hour:02d}:{s_min:02d}"
+
+            e_year = chunk[9]
+            if e_year == 0x55:
+                end_time = "Ongoing"
+            else:
+                e_month, e_day, e_hour, e_min = chunk[10], chunk[11], chunk[12], chunk[13]
+                end_time = f"20{e_year:02d}-{e_month:02d}-{e_day:02d} {e_hour:02d}:{e_min:02d}"
+
+            error_code_id = chunk[15]
+            error_string = ERROR_CODES.get(error_code_id, f"Unknown Error ({error_code_id})")
+
+            parsed_errors.append({
+                "record_id": record_id,
+                "error_code": error_code_id,
+                "description": error_string,
+                "start_time": start_time,
+                "end_time": end_time,
+            })
+
+        self._errors = parsed_errors
+        _LOGGER.debug("[%s] V2: Parsed %d error records", self.device_name, len(self._errors))
+
     def _build_data_dict(self) -> dict[str, Any]:
         """Build data dictionary for entities."""
         data = {}
@@ -1579,6 +1672,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data[SENSOR_BOOST_MODE] = self._boost_mode
         data[SENSOR_NEUTRAL_DETECTION] = self._neutral_detection
         data[SENSOR_BACKLIGHT] = self._backlight
+        data["errors"] = self._errors
 
         _LOGGER.debug("Built data dict: %s", data)
         return data
