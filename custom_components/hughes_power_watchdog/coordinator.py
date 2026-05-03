@@ -1228,13 +1228,14 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         - Bytes 43-76: Line 2 payload (dual-block only, 50A devices)
         - Last 2 bytes: End marker "q!" (0x7121)
         """
-        # Verify minimum packet size
-        if len(data) < V2_MIN_DATA_PACKET_SIZE:
+        # Verify absolute minimum: header(4) + version(1) + seq(1) + type(1) + dataLen(2) + end(2) = 11
+        # Empty-payload packets (e.g. ErrorReport with 0 records) are exactly 11 bytes.
+        # Per-type minimums are checked below after routing.
+        if len(data) < 11:
             _LOGGER.debug(
-                "[%s] V2: Packet too short (%d bytes), need at least %d",
+                "[%s] V2: Packet too short (%d bytes), need at least 11",
                 self.device_name,
                 len(data),
-                V2_MIN_DATA_PACKET_SIZE,
             )
             return
 
@@ -1295,6 +1296,16 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Only parse data packets (DLReport, type 0x01)
         if msg_type != V2_MSG_TYPE_DATA:
+            return
+
+        # DLReport requires at least V/I/P bytes
+        if len(data) < V2_MIN_DATA_PACKET_SIZE:
+            _LOGGER.debug(
+                "[%s] V2: DLReport too short (%d bytes), need at least %d",
+                self.device_name,
+                len(data),
+                V2_MIN_DATA_PACKET_SIZE,
+            )
             return
 
         try:
