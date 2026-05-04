@@ -199,6 +199,7 @@ Additional protocol details cross-referenced against the independent [TechBluepr
 
 ### Contributors
 - [IAmTheMitchell](https://github.com/IAmTheMitchell) — Gen 2 WD_E5 device support, V2 50A Line 2 sensor fix, protocol documentation for dual-block packet format
+- [gearhead765](https://github.com/gearhead765) — Error Log feature and testing (v0.9.0)
 
 ## License
 

@@ -6,7 +6,7 @@ DOMAIN = "hughes_power_watchdog"
 NAME = "Hughes Power Watchdog"
 
 # Platforms
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.LIGHT, Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.LIGHT, Platform.SENSOR, Platform.SWITCH, Platform.TODO]
 
 # Configuration
 CONF_MAC_ADDRESS = "mac_address"
