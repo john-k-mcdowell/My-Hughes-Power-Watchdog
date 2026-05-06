@@ -3,7 +3,7 @@
   "name": "Hughes Power Watchdog",
   "codeowners": ["@john-k-mcdowell"],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["bluetooth"],
   "documentation": "https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues",
