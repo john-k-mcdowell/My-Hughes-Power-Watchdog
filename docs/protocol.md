@@ -24,15 +24,15 @@ V2 protocol details are drawn from:
 | Generation | Connectivity | Model Suffix | BLE Device Name | Mobile App |
 |-----------|-------------|-------------|----------------|-----------|
 | **Gen 1** | Bluetooth only | EPO | `PMD*`, `PWS*`, `PMS*` | [Power Watchdog Bluetooth ONLY](https://play.google.com/store/apps/details?id=com.hughes.epo) |
-| **Gen 2** | WiFi + Bluetooth | EPOW | `WD_V5_*`, `WD_E5_*`, `WD_V6_*`, `WD_E6_*` | [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) |
+| **Gen 2** | WiFi + Bluetooth | EPOW | `WD_V5_*`, `WD_E5_*`, `WD_V6_*`, `WD_E6_*`, `WD_E7_*` | [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) |
 
-The V2 protocol header `$yw@` corresponds to the `com.yw.watchdog` package name of the official Gen 2 WiFi app. Device name prefixes like `WD_V5`, `WD_E5`, `WD_V6`, `WD_E6` are hardware BLE advertisement names and do not change — only our internal protocol label changed from "V5" to "V2".
+The V2 protocol header `$yw@` corresponds to the `com.yw.watchdog` package name of the official Gen 2 WiFi app. Device name prefixes like `WD_V5`, `WD_E5`, `WD_V6`, `WD_E6`, `WD_E7` are hardware BLE advertisement names and do not change — only our internal protocol label changed from "V5" to "V2".
 
 ## Protocol Overview
 
-| Feature | Gen 1 V1 (PMD/PWS/PMS) | Gen 2 V2 (WD_V5/WD_E5/WD_V6/WD_E6) |
+| Feature | Gen 1 V1 (PMD/PWS/PMS) | Gen 2 V2 (WD_V5/WD_E5/WD_V6/WD_E6/WD_E7) |
 |---------|---------------------------|-------------------|
-| Device Names | `PMD*`, `PWS*`, `PMS*` | `WD_V5_*`, `WD_E5_*`, `WD_V6_*`, `WD_E6_*` |
+| Device Names | `PMD*`, `PWS*`, `PMS*` | `WD_V5_*`, `WD_E5_*`, `WD_V6_*`, `WD_E6_*`, `WD_E7_*` |
 | Service UUID | `0000ffe0-0000-1000-8000-00805f9b34fb` | `000000ff-0000-1000-8000-00805f9b34fb` |
 | TX Characteristic | `0000ffe2-0000-1000-8000-00805f9b34fb` | `0000ff01-0000-1000-8000-00805f9b34fb` |
 | RX Characteristic | `0000fff5-0000-1000-8000-00805f9b34fb` | Same as TX (bidirectional) |
@@ -215,7 +215,7 @@ def decode_v1_packet(data: bytes) -> dict:
 
 ---
 
-## Gen 2 V2 Protocol (WD_V5 / WD_E5 / WD_V6 / WD_E6)
+## Gen 2 V2 Protocol (WD_V5 / WD_E5 / WD_V6 / WD_E6 / WD_E7)
 
 Used by Gen 2 WiFi + Bluetooth devices (EPOW models). Reverse engineered from Bluetooth HCI captures and the `com.yw.watchdog` Android application source code (`Cmd.java`, `Protocol.java`, `Package.java`, `DeviceManager.java`).
 
@@ -466,7 +466,7 @@ The integration detects which protocol to use through two mechanisms:
 
 At startup, the device name from the BLE advertisement is checked:
 - Starts with `PMD`, `PWS`, or `PMS` -> Gen 1 V1 protocol
-- Starts with `WD_V5`, `WD_E5`, `WD_V6`, or `WD_E6` -> Gen 2 V2 protocol
+- Starts with `WD_V5`, `WD_E5`, `WD_V6`, `WD_E6`, or `WD_E7` -> Gen 2 V2 protocol
 
 ### 2. Service-Based Detection (Confirmation)
 

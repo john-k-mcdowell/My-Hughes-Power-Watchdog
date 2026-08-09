@@ -15,7 +15,7 @@ Hughes Power Watchdog devices come in two generations, each using a different BL
 | Generation | Connectivity | Model Suffix | BLE Device Name | Mobile App | Example Models |
 |-----------|-------------|-------------|----------------|-----------|---------------|
 | **Gen 1** | Bluetooth only | EPO | `PMD*`, `PWS*`, `PMS*` | [Power Watchdog Bluetooth ONLY](https://play.google.com/store/apps/details?id=com.hughes.epo) | PWD30-EPO, PWD50-EPO, PWD50-EPD |
-| **Gen 2** | WiFi + Bluetooth | EPOW | `WD_V5_*`, `WD_E5_*`, `WD_V6_*`, `WD_E6_*` | [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) | PWD30EPOW, PWD50-EPOW |
+| **Gen 2** | WiFi + Bluetooth | EPOW | `WD_V5_*`, `WD_E5_*`, `WD_V6_*`, `WD_E6_*`, `WD_E7_*` | [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) | PWD30EPOW, PWD50-EPOW, PWD50EPOHW |
 
 Both generations are portable or hardwired (-H suffix). This integration uses only the BLE connection, even on Gen 2 WiFi models.
 
@@ -27,6 +27,7 @@ Both generations are portable or hardwired (-H suffix). This integration uses on
 | PWD-VM-30A | Gen 1 | V1 | None |
 | PWD30EPOW | Gen 2 | V2 | None |
 | PWD50EPOW | Gen 2 | V2 | None |
+| PWD50EPOHW | Gen 2 | V2 | None |
 
 Please let me know via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues) if you have tested on other models so they can be included in the README.
 
@@ -38,7 +39,7 @@ Based on the ESPHome implementation by spbrogan, tango2590, and makifoxgirl.
 
 ### Supported Models
 - **Gen 1** - Hughes Power Watchdog (PMD/PWS/PMS) - Bluetooth only models
-- **Gen 2** - Hughes Power Watchdog (WD_V5/WD_E5/WD_V6/WD_E6) - WiFi + Bluetooth models (v0.5.0+)
+- **Gen 2** - Hughes Power Watchdog (WD_V5/WD_E5/WD_V6/WD_E6/WD_E7) - WiFi + Bluetooth models (v0.5.0+)
 
 ### Real-Time Sensor Updates (v0.6.0)
 
@@ -133,7 +134,7 @@ If your device is not auto-discovered but is powered on and within Bluetooth ran
 
 ## Gen 2 (V2) Protocol Support
 
-Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth models with device names starting with `WD_V5_`, `WD_E5_`, `WD_V6_`, or `WD_E6_`, such as PWD30EPOW/PWD50EPOW). These devices use a different BLE protocol than the Gen 1 Bluetooth-only models. The protocol header `$yw@` corresponds to the "yw" identifier used in the official [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) app.
+Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth models with device names starting with `WD_V5_`, `WD_E5_`, `WD_V6_`, `WD_E6_`, or `WD_E7_`, such as PWD30EPOW/PWD50EPOW/PWD50EPOHW). These devices use a different BLE protocol than the Gen 1 Bluetooth-only models. The protocol header `$yw@` corresponds to the "yw" identifier used in the official [Power Watchdog WiFi](https://play.google.com/store/apps/details?id=com.yw.watchdog) app.
 
 **Gen 2 (V2) Status:**
 - Voltage, Current, Power readings - Working

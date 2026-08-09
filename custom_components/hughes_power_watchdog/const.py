@@ -13,10 +13,10 @@ CONF_MAC_ADDRESS = "mac_address"
 
 # Device name prefixes that we look for
 # V1 devices: PMD, PWS, PMS (use V1/legacy protocol)
-# V2 devices: WD_V5 / WD_E5 / WD_V6 / WD_E6 (use V2 protocol)
-DEVICE_NAME_PREFIXES = ["PMD", "PWS", "PMS", "WD_V5", "WD_E5", "WD_V6", "WD_E6"]
+# V2 devices: WD_V5 / WD_E5 / WD_V6 / WD_E6 / WD_E7 (use V2 protocol)
+DEVICE_NAME_PREFIXES = ["PMD", "PWS", "PMS", "WD_V5", "WD_E5", "WD_V6", "WD_E6", "WD_E7"]
 DEVICE_NAME_PREFIXES_V1 = ["PMD", "PWS", "PMS"]
-DEVICE_NAME_PREFIXES_V2 = ["WD_V5", "WD_E5", "WD_V6", "WD_E6"]
+DEVICE_NAME_PREFIXES_V2 = ["WD_V5", "WD_E5", "WD_V6", "WD_E6", "WD_E7"]
 
 # Connection health check interval (coordinator watchdog, not data polling)
 # Actual data arrives via push notifications from the device (~1s intervals)
@@ -44,7 +44,7 @@ LEGACY_SERVICE_UUID = V1_SERVICE_UUID
 CHARACTERISTIC_UUID_TX = V1_CHARACTERISTIC_UUID_TX
 
 # =============================================================================
-# V2 PROTOCOL (WD_V5_* / WD_E5_* / WD_V6_* / WD_E6_* devices)
+# V2 PROTOCOL (WD_V5_* / WD_E5_* / WD_V6_* / WD_E6_* / WD_E7_* devices)
 # =============================================================================
 # Reverse engineered from Bluetooth captures and Android app source - see docs/protocol.md
 V2_SERVICE_UUID = "000000ff-0000-1000-8000-00805f9b34fb"
