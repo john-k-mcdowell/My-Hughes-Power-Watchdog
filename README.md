@@ -168,7 +168,7 @@ Then check your Home Assistant logs for entries prefixed with `[V2]` or `[V1]`.
 
 ## Requirements
 
-- Home Assistant 2023.1.0 or newer
+- Home Assistant 2023.11.0 or newer
 - Bluetooth adapter/proxy in range of your Hughes Power Watchdog
 - Hughes Power Watchdog with Bluetooth (Gen 1 or Gen 2)
 

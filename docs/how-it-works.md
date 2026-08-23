@@ -6,7 +6,7 @@
 custom_components/hughes_power_watchdog/
   __init__.py        - Integration setup and teardown
   binary_sensor.py   - Binary sensor entities (relay, boost, neutral)
-  brand/             - Device icons (icon.png, icon@2x.png) for HA UI
+  brand/             - Device icons and logos (icon.png, icon@2x.png, logo.png, logo@2x.png) for HA UI
   button.py          - Button entities (energy reset, error delete)
   config_flow.py     - HA config flow for device discovery/setup
   const.py           - Constants, byte positions, sensor keys, command IDs, error codes
