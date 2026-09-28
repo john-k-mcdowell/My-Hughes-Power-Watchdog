@@ -39,7 +39,7 @@ All constants organized by section:
 The core BLE data coordinator. Key responsibilities:
 - **Protocol detection** - Two-step: name-based guess, then service UUID confirmation
 - **Connection management** - Lock-protected connect/disconnect, exponential backoff retry
-- **V1 notification handler** - Buffers two 20-byte chunks into 40-byte packets, extracts V/I/P/E/error/frequency, identifies Line 1 vs Line 2
+- **V1 notification handler** - Buffers incoming chunks and drains every complete 40-byte packet from the buffer per notification (50A dual-line devices send Line 1 and Line 2 as two concatenated packets in one notification), extracts V/I/P/E/error/frequency per packet, identifies Line 1 vs Line 2
 - **V2 notification handler** - Parses $yw@ framed packets, extracts all fields including extended fields (output voltage, frequency, temperature, error code, relay status, boost mode, neutral detection, backlight). Also detects ResultRes acknowledgment packets for command responses.
 - **V2 dual-block decoder** - Handles 79-byte packets from 50A devices with two 34-byte data blocks
 - **Data dict builder** - Assembles all sensor values into dict for entity updates
@@ -52,7 +52,7 @@ Key methods:
 - `_detect_v2_by_name()` - Static, checks device name against V2 prefix list
 - `_detect_protocol_by_service()` - Probes BLE service UUIDs
 - `_notification_handler_v1()` / `_notification_handler_v2()` - Push notification callbacks
-- `_parse_data_packet_v1()` - V1 40-byte packet parser
+- `_parse_data_packet_v1(packet: bytes) -> bool` - Parses one complete 40-byte V1 packet (sliced from the buffer by the caller); returns `True` if the packet had a valid data header and was parsed
 - `_parse_data_packet_v2()` - V2 variable-length packet parser, with ResultRes ack detection
 - `_parse_v2_extended_fields()` - Extracts bytes 25-42 (output voltage [booster models only], freq, temp, error, relay, boost, neutral, backlight)
 - `_decode_v2_dual_block_line2()` - Extracts Line 2 from dual-block 50A packets, stores L2 frequency
