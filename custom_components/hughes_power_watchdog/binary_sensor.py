@@ -17,7 +17,6 @@ from .const import (
     DOMAIN,
     SENSOR_BOOST_MODE,
     SENSOR_NEUTRAL_DETECTION,
-    SENSOR_RELAY_STATUS,
 )
 from .coordinator import HughesPowerWatchdogCoordinator
 
@@ -39,7 +38,6 @@ async def async_setup_entry(
         return
 
     entities = [
-        HughesPowerWatchdogRelayStatusSensor(coordinator),
         HughesPowerWatchdogNeutralDetectionSensor(coordinator),
     ]
 
@@ -76,30 +74,6 @@ class HughesPowerWatchdogBinarySensor(
         )
 
 
-class HughesPowerWatchdogRelayStatusSensor(HughesPowerWatchdogBinarySensor):
-    """Relay status binary sensor (V2 only).
-
-    Relay status byte: 0x00 = ON (power flowing), 0x01 or 0x02 = OFF/Error (tripped).
-    is_on = True means relay is ON (power flowing, normal operation).
-    """
-
-    _attr_device_class = BinarySensorDeviceClass.POWER
-    _attr_icon = "mdi:electric-switch"
-
-    def __init__(self, coordinator: HughesPowerWatchdogCoordinator) -> None:
-        """Initialize relay status sensor."""
-        super().__init__(coordinator, SENSOR_RELAY_STATUS)
-        self._attr_name = "Relay Status"
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return True if relay is ON (power flowing)."""
-        val = self.coordinator.data.get(self._sensor_type)
-        if val is None:
-            return None
-        return val == 0x00
-
-
 class HughesPowerWatchdogBoostModeSensor(HughesPowerWatchdogBinarySensor):
     """Boost mode binary sensor (V2 only).
 
@@ -125,7 +99,9 @@ class HughesPowerWatchdogBoostModeSensor(HughesPowerWatchdogBinarySensor):
 class HughesPowerWatchdogNeutralDetectionSensor(HughesPowerWatchdogBinarySensor):
     """Neutral detection binary sensor (V2 only).
 
-    Neutral detection byte: 0x00 = OK, non-zero = problem detected.
+    Reflects error code 8 ("No neutral circuit detected"), not the
+    monitoring enable/bypass setting (see the Neutral Detection Control
+    switch for that) - see issue #14.
     is_on = True means a problem is detected (for BinarySensorDeviceClass.PROBLEM).
     """
 

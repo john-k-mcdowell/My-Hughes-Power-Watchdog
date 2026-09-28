@@ -32,6 +32,8 @@ from .const import (
     SENSOR_FREQUENCY,
     SENSOR_FREQUENCY_L2,
     SENSOR_OUTPUT_VOLTAGE,
+    SENSOR_POWER_FACTOR,
+    SENSOR_POWER_FACTOR_L2,
     SENSOR_POWER_L1,
     SENSOR_POWER_L2,
     SENSOR_TEMPERATURE,
@@ -79,6 +81,16 @@ async def async_setup_entry(
     if coordinator.is_v2_protocol and coordinator.has_booster:
         sensors.append(HughesPowerWatchdogOutputVoltageSensor(coordinator))
         sensors.append(HughesPowerWatchdogTemperatureSensor(coordinator))
+
+    # Power factor (V2 only - not present in the V1 protocol)
+    if coordinator.is_v2_protocol:
+        sensors.append(
+            HughesPowerWatchdogPowerFactorSensor(coordinator, SENSOR_POWER_FACTOR, "Line 1")
+        )
+        if coordinator.is_dual_line:
+            sensors.append(
+                HughesPowerWatchdogPowerFactorSensor(coordinator, SENSOR_POWER_FACTOR_L2, "Line 2")
+            )
 
     async_add_entities(sensors)
 
@@ -300,3 +312,23 @@ class HughesPowerWatchdogTemperatureSensor(HughesPowerWatchdogSensor):
         if val == 0:
             return None
         return val
+
+
+class HughesPowerWatchdogPowerFactorSensor(HughesPowerWatchdogSensor):
+    """Power factor sensor for Hughes Power Watchdog (V2 only)."""
+
+    _attr_device_class = SensorDeviceClass.POWER_FACTOR
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+
+    def __init__(
+        self, coordinator: HughesPowerWatchdogCoordinator, sensor_type: str, line: str
+    ) -> None:
+        """Initialize power factor sensor."""
+        super().__init__(coordinator, sensor_type)
+        self._attr_name = f"Power Factor {line}"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the power factor value."""
+        return self.coordinator.data.get(self._sensor_type)

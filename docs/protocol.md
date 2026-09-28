@@ -292,15 +292,15 @@ Each 34-byte block contains:
 | 4-7 | 4 | Current | BE uint32 / 10000 (A) |
 | 8-11 | 4 | Power | BE uint32 / 10000 (W) |
 | 12-15 | 4 | Energy | BE uint32 / 10000 (kWh) |
-| 16-19 | 4 | temp1 (reserved) | Not used by current firmware |
+| 16-19 | 4 | Power Factor | BE uint32 / 1000 (e.g. 718 = 0.718) |
 | 20-23 | 4 | Output Voltage | BE uint32 / 10000 (V) — booster models only |
 | 24 | 1 | Backlight | LED brightness (0-5) |
-| 25 | 1 | Neutral Detection | `0x00` = OK |
+| 25 | 1 | Neutral Monitoring | `0x00`=enabled, `0x01`=bypassed — not a fault flag, see below |
 | 26 | 1 | Boost Mode | `0`=off, `1`=active — booster models only |
 | 27 | 1 | Temperature | Degrees Celsius — booster models only |
 | 28-31 | 4 | Frequency | BE uint32 / 100 (Hz) |
 | 32 | 1 | Error Code | 0=OK, 1=E1, etc. |
-| 33 | 1 | Relay Status | `0x00`=ON, `0x01`/`0x02`=OFF/Error |
+| 33 | 1 | Line ID | `0x00`=Line 1 block, `0x01`=Line 2 block — not relay state, see below |
 
 **Absolute byte positions in the packet (including 9-byte header):**
 
@@ -310,15 +310,15 @@ Each 34-byte block contains:
 | 13-16 | Current (L1) | |
 | 17-20 | Power (L1) | |
 | 21-24 | Energy (L1) | |
-| 25-28 | temp1 (reserved) | Firmware-reserved, not used. Per the TechBlueprints `PROTOCOL-GEN2.md`: "Temperature 1 (offset 16): Reserved; not used in current firmware." |
+| 25-28 | Power Factor | BE uint32 / 1000 (e.g. 718 = 0.718). Previously listed as reserved "temp1"; identified via a packet capture in [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14), matching watts / (volts × amps) to within 0.001. |
 | 29-32 | Output Voltage | **Booster models only** (V8/V9/E8/E9). On V5/E5/V6/E6/V7/E7 the firmware repurposes these bytes to mirror the energy counter, so implementations must suppress this field on non-booster models. |
 | 33 | Backlight | 0-5 |
-| 34 | Neutral Detection | `0x00` = OK, non-zero = problem |
+| 34 | Neutral Monitoring | `0x00`=monitoring enabled, `0x01`=bypassed. Matches the `NeutralDetection` (0x0D) command's own payload values (see below) — **not** a fault flag. Previously mislabeled as a live fault indicator (`0x00`=OK); a real lost-neutral fault is reported separately via error code 8. Corrected per [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14). |
 | 35 | Boost Mode | **Booster models only** (V8/V9/E8/E9). `0`=off, `1`=active. Reads `0` on non-booster models. |
 | 36 | Temperature (°C) | **Booster models only** (V8/V9/E8/E9). Device internal temperature; reads `0` on non-booster models. Device firmware triggers an over-temp alarm at 74 °C. |
 | 37-40 | Frequency (Hz) | BE uint32 / 100. E.g. 6000 = 60.00 Hz |
 | 41 | Error Code | 0 = OK, 1-9 = E1-E9, 11-12 = F1-F2 |
-| 42 | Relay Status | `0x00` = ON, `0x01`/`0x02` = OFF/tripped |
+| 42 | Line ID | `0x00`=Line 1 block, `0x01`=Line 2 block. Previously mislabeled as relay status (`0x00`=ON); a packet capture in [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14) showed this byte stays constant per block through a full relay open/close cycle. No correct relay-status byte is currently known — the integration reports relay state as unknown on V2 devices. |
 
 #### Dual-Block Layout (50A devices, payload length 0x0044 = 68 bytes)
 
@@ -330,15 +330,15 @@ For 50A devices, the packet contains two 34-byte blocks. Block 2 (Line 2) starts
 | 47-50 | Current (L2) |
 | 51-54 | Power (L2) |
 | 55-58 | Energy (L2) |
-| 59-62 | temp1 (L2) |
+| 59-62 | Power Factor (L2) |
 | 63-66 | Output Voltage (L2) |
 | 67 | Backlight (L2) |
-| 68 | Neutral Detection (L2) |
+| 68 | Neutral Monitoring (L2) |
 | 69 | Boost Mode (L2) |
 | 70 | Temperature (L2) |
 | 71-74 | Frequency (L2) |
 | 75 | Error Code (L2) |
-| 76 | Relay Status (L2) |
+| 76 | Line ID (L2) |
 | 77-78 | End Marker `q!` |
 
 ### ErrorReport (cmd 0x02)
@@ -407,13 +407,16 @@ def decode_v2_packet(data: bytes) -> dict:
 
     # Extended fields (bytes 25-42)
     if len(data) >= 43:
+        result['power_factor'] = struct.unpack('>I', data[25:29])[0] / 1000
         result['output_voltage'] = struct.unpack('>I', data[29:33])[0] / 10000
-        result['neutral_detection'] = data[34]
+        # 0x00=monitoring enabled, 0x01=bypassed - not a fault flag (see issue #14)
+        result['neutral_monitoring'] = data[34]
         result['boost_mode'] = data[35]
         result['temperature'] = data[36]
         result['frequency'] = struct.unpack('>I', data[37:41])[0] / 100
         result['error_code'] = data[41]
-        result['relay_status'] = data[42]
+        # 0x00=Line 1 block, 0x01=Line 2 block - not relay state (see issue #14)
+        result['line_id'] = data[42]
 
     # Dual-block 50A packets (Line 2 at bytes 43-76)
     if len(data) >= 59 and data[7:9] == b'\x00\x44':
@@ -445,16 +448,19 @@ def decode_v2_packet(data: bytes) -> dict:
 | Alarm push (0x0E) | Not implemented. Zero-payload push alert from device. |
 | SetInitData (0x0A) | Not used. The integration's `!%!%,protocol,open,` init string works; SetInitData with the 15-byte magic array may be more robust but has not been needed. |
 | Booster-only sensor validation | Output voltage, temperature, and boost mode are gated to V8/V9/E8/E9 models but have **not yet been validated against real booster hardware**. Seeking beta testers. |
-| Neutral-detection control switch | The `NeutralDetection` (0x0D) command is implemented but has **not been validated** on a real device — needs beta testing. |
+| Neutral-detection control switch | The `NeutralDetection` (0x0D) command is implemented; the readback byte (34/68) is confirmed by issue #14 to match the command's own enable/bypass values, but a live send-command-then-observe-byte round trip has not been beta tested. |
+| Relay status | No byte in the V2 protocol is confirmed to report live relay on/off state. Byte 42/76 was assumed to be relay status but is a block/line identifier (issue #14). The Power Relay switch's on/off indicator is unknown on V2 until a correct byte is identified. |
 
 ### Resolved Since Earlier Drafts
 
 Several items previously listed as "unknown" have been clarified — primarily thanks to cross-referencing the [TechBlueprints/dbus-power-watchdog](https://github.com/TechBlueprints/dbus-power-watchdog) Venus OS implementation:
 
-- **V2 bytes 25-28 (`temp1`):** firmware-reserved, not used. Previously listed as "purpose unknown."
+- **V2 bytes 25-28 (previously `temp1`):** confirmed to be power factor × 1000, not firmware-reserved. Identified via a packet capture in [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14).
 - **V2 temperature (byte 36):** booster-model exclusive (V8/V9/E8/E9). Reads `0` on non-booster models; over-temp alarm fires at 74 °C.
 - **V2 boost mode (byte 35):** booster-model exclusive. Reads `0` on non-booster models.
 - **V2 output voltage (bytes 29-32):** confirmed to mirror the energy counter on V5/E5/V6/E6/V7/E7 and hold the real regulated voltage only on V8/V9/E8/E9. Now gated by `has_booster` in the integration.
+- **V2 byte 34/68 (previously "Neutral Detection"):** confirmed to be the neutral-monitoring enable/bypass setting, not a live fault flag — matches the `NeutralDetection` (0x0D) command's own payload values. A real lost-neutral fault is reported via error code 8. Corrected per [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14).
+- **V2 byte 42/76 (previously "Relay Status"):** confirmed to be a block/line identifier (`0x00`=Line 1, `0x01`=Line 2), not relay state — it stayed constant through a full relay open/close cycle in a packet capture. No correct relay-status byte is currently known. Corrected per [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14).
 
 ---
 
