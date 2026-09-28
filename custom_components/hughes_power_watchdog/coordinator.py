@@ -1054,35 +1054,37 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Append data to buffer
         self._data_buffer.extend(data)
 
-        # Check if we have a complete 40-byte packet
-        if len(self._data_buffer) >= TOTAL_DATA_SIZE:
-            self._parse_data_packet_v1()
-            self._data_buffer = bytearray()
+        # Process every complete 40-byte packet currently in the buffer.
+        # Dual-line (50A) devices send Line 1 and Line 2 as two complete
+        # 40-byte packets concatenated in a single BLE notification, so a
+        # single notification can contain more than one packet.
+        updated = False
+        while len(self._data_buffer) >= TOTAL_DATA_SIZE:
+            packet = bytes(self._data_buffer[:TOTAL_DATA_SIZE])
+            del self._data_buffer[:TOTAL_DATA_SIZE]
+            if self._parse_data_packet_v1(packet):
+                updated = True
 
-            # Push updated data to all entities immediately
-            if self._line_1_data:
-                self.async_set_updated_data(self._build_data_dict())
+        # Push updated data to all entities immediately
+        if updated and self._line_1_data:
+            self.async_set_updated_data(self._build_data_dict())
 
-    def _parse_data_packet_v1(self) -> None:
-        """Parse complete 40-byte V1 data packet."""
-        if len(self._data_buffer) < TOTAL_DATA_SIZE:
-            _LOGGER.warning(
-                "[%s] V1: Incomplete data packet: %d bytes",
-                self.device_name,
-                len(self._data_buffer),
-            )
-            return
+    def _parse_data_packet_v1(self, packet: bytes) -> bool:
+        """Parse a single complete 40-byte V1 data packet.
 
-        # Log complete raw buffer for debugging
+        Returns:
+            True if the packet had a valid data header and was parsed.
+        """
+        # Log complete raw packet for debugging
         _LOGGER.debug(
-            "[%s] V1: Complete buffer (%d bytes): %s",
+            "[%s] V1: Complete packet (%d bytes): %s",
             self.device_name,
-            len(self._data_buffer),
-            bytes(self._data_buffer).hex(),
+            len(packet),
+            packet.hex(),
         )
 
         # Verify header - device sends multiple packet types, only process data packets
-        header = bytes(self._data_buffer[BYTE_HEADER_START:BYTE_HEADER_END])
+        header = packet[BYTE_HEADER_START:BYTE_HEADER_END]
         _LOGGER.debug(
             "[%s] V1: Header bytes: %s (expected: %s)",
             self.device_name,
@@ -1095,30 +1097,30 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.device_name,
                 header.hex(),
             )
-            return
+            return False
 
         # Extract voltage (big-endian int32 / 10000)
-        voltage_bytes = self._data_buffer[BYTE_VOLTAGE_START:BYTE_VOLTAGE_END]
+        voltage_bytes = packet[BYTE_VOLTAGE_START:BYTE_VOLTAGE_END]
         voltage = struct.unpack(">i", voltage_bytes)[0] / DATA_CONVERSION_FACTOR
 
         # Extract current (big-endian int32 / 10000)
-        current_bytes = self._data_buffer[BYTE_CURRENT_START:BYTE_CURRENT_END]
+        current_bytes = packet[BYTE_CURRENT_START:BYTE_CURRENT_END]
         current = struct.unpack(">i", current_bytes)[0] / DATA_CONVERSION_FACTOR
 
         # Extract power (big-endian int32 / 10000)
-        power_bytes = self._data_buffer[BYTE_POWER_START:BYTE_POWER_END]
+        power_bytes = packet[BYTE_POWER_START:BYTE_POWER_END]
         power = struct.unpack(">i", power_bytes)[0] / DATA_CONVERSION_FACTOR
 
         # Extract cumulative energy (big-endian int32 / 10000)
-        energy_bytes = self._data_buffer[BYTE_ENERGY_START:BYTE_ENERGY_END]
+        energy_bytes = packet[BYTE_ENERGY_START:BYTE_ENERGY_END]
         energy = struct.unpack(">i", energy_bytes)[0] / DATA_CONVERSION_FACTOR
 
         # Extract error code
-        error_code = self._data_buffer[BYTE_ERROR_CODE]
+        error_code = packet[BYTE_ERROR_CODE]
         self._error_code = error_code
 
         # Extract frequency from chunk 2 (bytes 31-34, int32 / 100)
-        freq_bytes = self._data_buffer[V1_BYTE_FREQUENCY_START:V1_BYTE_FREQUENCY_END]
+        freq_bytes = packet[V1_BYTE_FREQUENCY_START:V1_BYTE_FREQUENCY_END]
         freq_raw = struct.unpack(">i", freq_bytes)[0]
         frequency = freq_raw / FREQUENCY_CONVERSION_FACTOR
         _LOGGER.debug(
@@ -1142,7 +1144,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         # Identify which line this data is for (bytes 37-39 in chunk 2)
-        line_id = bytes(self._data_buffer[BYTE_LINE_ID_START:BYTE_LINE_ID_END])
+        line_id = packet[BYTE_LINE_ID_START:BYTE_LINE_ID_END]
         _LOGGER.debug(
             "[%s] V1: Line ID bytes: %s (Line1=%s, Line2=%s)",
             self.device_name,
@@ -1171,6 +1173,8 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug("[%s] V1: Line 2 data: %s", self.device_name, self._line_2_data)
         else:
             _LOGGER.warning("[%s] V1: Unknown line identifier: %s", self.device_name, line_id.hex())
+
+        return True
 
     # =========================================================================
     # V2 PROTOCOL HANDLERS
