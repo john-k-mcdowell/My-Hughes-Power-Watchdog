@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     CONNECTION_CHECK_INTERVAL,
     DOMAIN,
-    SENSOR_RELAY_STATUS,
+    SENSOR_NEUTRAL_MONITORING_ENABLED,
     SWITCH_MONITORING,
     SWITCH_NEUTRAL_DETECTION_CONTROL,
     SWITCH_RELAY,
@@ -116,16 +116,16 @@ class HughesPowerWatchdogRelaySwitch(
 
     @property
     def is_on(self) -> bool | None:
-        """Return True if relay is on (power flowing).
+        """Return True if relay is on (power flowing), if known.
 
-        V2: reads relay status from data (0x00 = ON).
+        V2: no protocol byte reliably reports live relay state (byte 42/76
+        was assumed to be relay status but is actually a block/line
+        identifier that never changes with the relay - see issue #14), so
+        state is unknown until a correct byte is identified.
         V1: no relay status reported, assume on unless error.
         """
         if self.coordinator.is_v2_protocol:
-            val = self.coordinator.data.get(SENSOR_RELAY_STATUS)
-            if val is None:
-                return None
-            return val == 0x00
+            return None
         # V1 doesn't report relay status; assume on
         return True
 
@@ -168,13 +168,15 @@ class HughesPowerWatchdogNeutralDetectionControlSwitch(
         )
         self._attr_name = "Neutral Detection Control"
         self._attr_device_info = coordinator.device_info
-        # Assume enabled by default (device default state)
-        self._assumed_on: bool = True
 
     @property
-    def is_on(self) -> bool:
-        """Return True if neutral detection monitoring is enabled."""
-        return self._assumed_on
+    def is_on(self) -> bool | None:
+        """Return True if neutral detection monitoring is enabled.
+
+        Reads the device's own monitoring-enabled/bypassed byte
+        (0x00=enabled, 0x01=bypassed) - see issue #14.
+        """
+        return self.coordinator.data.get(SENSOR_NEUTRAL_MONITORING_ENABLED)
 
     @property
     def available(self) -> bool:
@@ -186,14 +188,10 @@ class HughesPowerWatchdogNeutralDetectionControlSwitch(
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable neutral detection monitoring."""
-        success = await self.coordinator.async_set_neutral_detection(True)
-        if success:
-            self._assumed_on = True
+        await self.coordinator.async_set_neutral_detection(True)
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable neutral detection monitoring."""
-        success = await self.coordinator.async_set_neutral_detection(False)
-        if success:
-            self._assumed_on = False
+        await self.coordinator.async_set_neutral_detection(False)
         self.async_write_ha_state()
