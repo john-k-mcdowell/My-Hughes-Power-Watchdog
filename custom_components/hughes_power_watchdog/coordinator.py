@@ -144,6 +144,7 @@ from .const import (
     SENSOR_FREQUENCY_L2,
     SENSOR_OUTPUT_VOLTAGE,
     SENSOR_TEMPERATURE,
+    SENSOR_RELAY_STATUS,
     SENSOR_BOOST_MODE,
     SENSOR_NEUTRAL_DETECTION,
     SENSOR_NEUTRAL_MONITORING_ENABLED,
@@ -213,6 +214,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._frequency_l2: float | None = None
         self._output_voltage: float | None = None
         self._temperature: int | None = None
+        self._relay_status: int | None = None
         self._boost_mode: int | None = None
         self._neutral_monitoring: int | None = None
         self._power_factor: float | None = None
@@ -1367,13 +1369,15 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "energy": energy,
             }
 
+            # Dual-block layout (50A devices, payload length 0x0044 = 68 bytes)
+            is_dual_block = len(data) >= 59 and data[7:9] == b"\x00\x44"
+
             # Extract extended single-block fields (bytes 25-42) if available
             if len(data) >= V2_MIN_EXTENDED_PACKET_SIZE:
-                self._parse_v2_extended_fields(data)
+                self._parse_v2_extended_fields(data, is_dual_block)
 
-            # Check for dual-block layout (50A devices, payload length 0x0044 = 68 bytes)
             self._line_2_data = None
-            if len(data) >= 59 and data[7:9] == b"\x00\x44":
+            if is_dual_block:
                 self._decode_v2_dual_block_line2(data)
 
             _LOGGER.debug(
@@ -1401,12 +1405,19 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 data.hex(),
             )
 
-    def _parse_v2_extended_fields(self, data: bytes | bytearray) -> None:
+    def _parse_v2_extended_fields(
+        self, data: bytes | bytearray, is_dual_block: bool = False
+    ) -> None:
         """Parse V2 extended fields from single-block payload bytes 25-42.
 
         These fields are confirmed by the Android app source code and, for
-        power factor/neutral monitoring/line ID, by a packet capture
-        reported in issue #14.
+        power factor/neutral monitoring, by a packet capture reported in
+        issue #14. Byte 42 is relay status (0x00=ON) on single-block (30A)
+        packets, confirmed working in 0.9.2 and reported broken in 0.10.0
+        by issue #14's gearhead765 comment, but on dual-block (50A) packets
+        that same byte position is a block/line identifier that never
+        changes with real relay state (confirmed on a WD_E5 by issue #14's
+        original report) - pass is_dual_block to select the right meaning.
         """
         # Power factor (bytes 25-28, uint32 / 1000)
         pf_bytes = data[V2_BYTE_POWER_FACTOR_START:V2_BYTE_POWER_FACTOR_END]
@@ -1451,15 +1462,21 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         error_code = data[V2_BYTE_ERROR_CODE]
         self._error_code = error_code
 
-        # Line ID (byte 42, 0x00=L1, 0x01=L2) - not relay state; logged for diagnostics
-        line_id = data[V2_BYTE_LINE_ID]
+        # Byte 42: relay status on single-block (30A) packets, but a
+        # block/line identifier (not relay state) on dual-block (50A)
+        # packets - see issue #14.
+        byte_42 = data[V2_BYTE_LINE_ID]
+        if is_dual_block:
+            self._relay_status = None
+        else:
+            self._relay_status = byte_42
 
         # Structured debug log for all extended fields
         out_v_label = "%.2fV" % output_voltage if self.has_booster else "%.2fV(suppressed-mirrors-energy)" % output_voltage
         _LOGGER.debug(
             "[%s] V2: Extended fields - pf=%s(%.3f) outV=%s(%s) "
             "backlight=%d neutral_monitoring=%d boost=%d temp=%d°C "
-            "freq=%s(%.2fHz) error=%d line_id=0x%02x",
+            "freq=%s(%.2fHz) error=%d %s=0x%02x",
             self.device_name,
             pf_bytes.hex(),
             power_factor,
@@ -1472,7 +1489,8 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             freq_bytes.hex(),
             frequency,
             error_code,
-            line_id,
+            "line_id" if is_dual_block else "relay",
+            byte_42,
         )
 
         # Warn on unexpected values for beta testing
@@ -1482,6 +1500,12 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.device_name,
                 temperature,
                 temperature,
+            )
+        if not is_dual_block and byte_42 not in (0x00, 0x01, 0x02):
+            _LOGGER.warning(
+                "[%s] V2: Unknown relay status: 0x%02x (expected 0x00/0x01/0x02)",
+                self.device_name,
+                byte_42,
             )
 
     def _decode_v2_dual_block_line2(
@@ -1688,6 +1712,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data[SENSOR_FREQUENCY] = self._frequency
         data[SENSOR_OUTPUT_VOLTAGE] = self._output_voltage
         data[SENSOR_TEMPERATURE] = self._temperature
+        data[SENSOR_RELAY_STATUS] = self._relay_status
         data[SENSOR_BOOST_MODE] = self._boost_mode
         # Neutral problem (PROBLEM binary sensor): a real lost-neutral fault,
         # not the monitoring on/off setting. See issue #14.

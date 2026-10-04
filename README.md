@@ -66,6 +66,7 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 > These three sensors are only created for V8/V9/E8/E9 models and have **not yet been validated** on hardware. Please report results via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues).
 
 **Gen 2 (V2) Models Only:**
+- **Relay Status** - Whether the power relay is ON or tripped (binary sensor). Only reported on 30A (single-line) devices — unavailable on 50A (dual-line) devices, see note below.
 - **Neutral Detection** - Whether a lost-neutral fault (error code 8) is currently reported (binary sensor)
 - **Power Factor** (per line) - Ratio of real to apparent power
 
@@ -81,7 +82,7 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 > **Gen 1 (V1) device commands are a work in progress.** BLE writes succeed but the device currently ignores them, so command entities (Power Relay, Backlight, Reset Energy, Clear Error History) are **only exposed on Gen 2 (V2) devices** until the V1 wire format is reverse-engineered. The underlying code remains in the codebase.
 
 **Gen 2 (V2) devices:**
-- **Power Relay** (switch) - Turn the power relay on/off. No protocol byte reliably reports live relay state yet, so the switch's on/off indicator shows as unknown — the commands themselves still work.
+- **Power Relay** (switch) - Turn the power relay on/off. On 30A (single-line) devices the on/off indicator reflects real relay state. On 50A (dual-line) devices no protocol byte reliably reports live relay state, so the indicator shows as unknown — the commands themselves still work on both.
 - **Backlight** (light with brightness) - Control the device LED brightness (levels 0-5; HA brightness 0-255 is mapped to the nearest discrete level).
 - **Reset Energy Counter** (button) - Reset the cumulative kWh counter to zero.
 - **Clear Error History** (button) - Delete all stored error records from the device.
@@ -147,7 +148,7 @@ Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth 
 - Device commands — relay, backlight, energy reset, error delete, clock sync - Working (v0.8.0)
 - Output Voltage, Temperature, Boost Mode (booster models V8/V9/E8/E9 only) - **Untested**
 - Neutral Detection Control switch - Working, reflects real device state (v0.10.0)
-- Power Relay switch on/off indicator - state unknown; no confirmed relay-status byte exists in the protocol (see [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14))
+- Relay Status / Power Relay on/off indicator - Working on 30A (single-line) devices; unknown on 50A (dual-line) devices since no confirmed relay-status byte exists for them (see [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14))
 
 **If you have a Gen 2 device**, please help us by:
 1. Enabling debug logging (see below)

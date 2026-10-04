@@ -15,6 +15,7 @@ from .const import (
     CONNECTION_CHECK_INTERVAL,
     DOMAIN,
     SENSOR_NEUTRAL_MONITORING_ENABLED,
+    SENSOR_RELAY_STATUS,
     SWITCH_MONITORING,
     SWITCH_NEUTRAL_DETECTION_CONTROL,
     SWITCH_RELAY,
@@ -118,14 +119,17 @@ class HughesPowerWatchdogRelaySwitch(
     def is_on(self) -> bool | None:
         """Return True if relay is on (power flowing), if known.
 
-        V2: no protocol byte reliably reports live relay state (byte 42/76
-        was assumed to be relay status but is actually a block/line
-        identifier that never changes with the relay - see issue #14), so
-        state is unknown until a correct byte is identified.
+        V2: byte 42/76 is relay status (0x00=ON) on single-block (30A)
+        packets, but a block/line identifier - not relay state - on
+        dual-block (50A) packets, so state is unknown there until a
+        correct byte is identified. See issue #14.
         V1: no relay status reported, assume on unless error.
         """
         if self.coordinator.is_v2_protocol:
-            return None
+            val = self.coordinator.data.get(SENSOR_RELAY_STATUS)
+            if val is None:
+                return None
+            return val == 0x00
         # V1 doesn't report relay status; assume on
         return True
 

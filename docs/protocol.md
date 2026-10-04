@@ -300,7 +300,7 @@ Each 34-byte block contains:
 | 27 | 1 | Temperature | Degrees Celsius — booster models only |
 | 28-31 | 4 | Frequency | BE uint32 / 100 (Hz) |
 | 32 | 1 | Error Code | 0=OK, 1=E1, etc. |
-| 33 | 1 | Line ID | `0x00`=Line 1 block, `0x01`=Line 2 block — not relay state, see below |
+| 33 | 1 | Relay Status / Line ID | `0x00`=ON, `0x01`/`0x02`=OFF/Error on single-block (30A) packets; `0x00`=Line 1 block, `0x01`=Line 2 block (not relay state) on dual-block (50A) packets — see below |
 
 **Absolute byte positions in the packet (including 9-byte header):**
 
@@ -318,11 +318,11 @@ Each 34-byte block contains:
 | 36 | Temperature (°C) | **Booster models only** (V8/V9/E8/E9). Device internal temperature; reads `0` on non-booster models. Device firmware triggers an over-temp alarm at 74 °C. |
 | 37-40 | Frequency (Hz) | BE uint32 / 100. E.g. 6000 = 60.00 Hz |
 | 41 | Error Code | 0 = OK, 1-9 = E1-E9, 11-12 = F1-F2 |
-| 42 | Line ID | `0x00`=Line 1 block, `0x01`=Line 2 block. Previously mislabeled as relay status (`0x00`=ON); a packet capture in [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14) showed this byte stays constant per block through a full relay open/close cycle. No correct relay-status byte is currently known — the integration reports relay state as unknown on V2 devices. |
+| 42 | Relay Status | `0x00`=ON, `0x01`/`0x02`=OFF/Error. **Single-block (30A) packets only** — confirmed working by issue #14's gearhead765 comment (30A device) on 0.9.2. On dual-block (50A) packets this same byte position means something different — see Dual-Block Layout below. |
 
 #### Dual-Block Layout (50A devices, payload length 0x0044 = 68 bytes)
 
-For 50A devices, the packet contains two 34-byte blocks. Block 2 (Line 2) starts at byte 43:
+For 50A devices, the packet contains two 34-byte blocks. Block 2 (Line 2) starts at byte 43. **Byte 42 (the last byte of Block 1) is also repurposed on dual-block packets**: it becomes a block/line identifier (`0x00`=Line 1, `0x01`=Line 2), not relay status — a packet capture from a WD_E5 in [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14) showed this byte stays constant per block through a full relay open/close cycle. No correct relay-status byte is currently known for dual-block (50A) devices — the integration reports relay state as unknown there, while single-block (30A) devices keep working relay status via byte 42 above.
 
 | Bytes | Field |
 |-------|-------|
@@ -405,6 +405,8 @@ def decode_v2_packet(data: bytes) -> dict:
     if len(data) >= 25:
         result['energy'] = struct.unpack('>I', data[21:25])[0] / 10000
 
+    is_dual_block = len(data) >= 59 and data[7:9] == b'\x00\x44'
+
     # Extended fields (bytes 25-42)
     if len(data) >= 43:
         result['power_factor'] = struct.unpack('>I', data[25:29])[0] / 1000
@@ -415,11 +417,15 @@ def decode_v2_packet(data: bytes) -> dict:
         result['temperature'] = data[36]
         result['frequency'] = struct.unpack('>I', data[37:41])[0] / 100
         result['error_code'] = data[41]
-        # 0x00=Line 1 block, 0x01=Line 2 block - not relay state (see issue #14)
-        result['line_id'] = data[42]
+        # Single-block (30A): byte 42 is relay status (0x00=ON).
+        # Dual-block (50A): byte 42 is a block/line ID, not relay state - see issue #14.
+        if is_dual_block:
+            result['line_id'] = data[42]
+        else:
+            result['relay_status'] = data[42]
 
     # Dual-block 50A packets (Line 2 at bytes 43-76)
-    if len(data) >= 59 and data[7:9] == b'\x00\x44':
+    if is_dual_block:
         result['line_2_voltage'] = struct.unpack('>I', data[43:47])[0] / 10000
         result['line_2_current'] = struct.unpack('>I', data[47:51])[0] / 10000
         result['line_2_power'] = struct.unpack('>I', data[51:55])[0] / 10000
@@ -449,7 +455,7 @@ def decode_v2_packet(data: bytes) -> dict:
 | SetInitData (0x0A) | Not used. The integration's `!%!%,protocol,open,` init string works; SetInitData with the 15-byte magic array may be more robust but has not been needed. |
 | Booster-only sensor validation | Output voltage, temperature, and boost mode are gated to V8/V9/E8/E9 models but have **not yet been validated against real booster hardware**. Seeking beta testers. |
 | Neutral-detection control switch | The `NeutralDetection` (0x0D) command is implemented; the readback byte (34/68) is confirmed by issue #14 to match the command's own enable/bypass values, but a live send-command-then-observe-byte round trip has not been beta tested. |
-| Relay status | No byte in the V2 protocol is confirmed to report live relay on/off state. Byte 42/76 was assumed to be relay status but is a block/line identifier (issue #14). The Power Relay switch's on/off indicator is unknown on V2 until a correct byte is identified. |
+| Relay status (dual-block/50A only) | Byte 76 (and byte 42 when the packet is dual-block) is a block/line identifier, not relay status, on 50A devices (issue #14). No correct relay-status byte is known for dual-block packets, so the Power Relay switch's on/off indicator is unknown there. Single-block (30A) devices have working relay status via byte 42 — confirmed by issue #14's gearhead765 comment after a brief 0.10.0 regression. |
 
 ### Resolved Since Earlier Drafts
 
@@ -460,7 +466,7 @@ Several items previously listed as "unknown" have been clarified — primarily t
 - **V2 boost mode (byte 35):** booster-model exclusive. Reads `0` on non-booster models.
 - **V2 output voltage (bytes 29-32):** confirmed to mirror the energy counter on V5/E5/V6/E6/V7/E7 and hold the real regulated voltage only on V8/V9/E8/E9. Now gated by `has_booster` in the integration.
 - **V2 byte 34/68 (previously "Neutral Detection"):** confirmed to be the neutral-monitoring enable/bypass setting, not a live fault flag — matches the `NeutralDetection` (0x0D) command's own payload values. A real lost-neutral fault is reported via error code 8. Corrected per [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14).
-- **V2 byte 42/76 (previously "Relay Status"):** confirmed to be a block/line identifier (`0x00`=Line 1, `0x01`=Line 2), not relay state — it stayed constant through a full relay open/close cycle in a packet capture. No correct relay-status byte is currently known. Corrected per [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14).
+- **V2 byte 42/76:** on dual-block (50A) packets, confirmed to be a block/line identifier (`0x00`=Line 1, `0x01`=Line 2), not relay state — it stayed constant through a full relay open/close cycle in a WD_E5 packet capture. On single-block (30A) packets, byte 42 **is** relay status (`0x00`=ON) — removing it entirely in 0.10.0 broke a working feature on 30A devices (issue #14's gearhead765 comment); restored for single-block packets only. No correct relay-status byte is known for dual-block (50A) devices.
 
 ---
 
