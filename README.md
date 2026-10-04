@@ -150,6 +150,8 @@ Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth 
 - Neutral Detection Control switch - Working, reflects real device state (v0.10.0)
 - Relay Status / Power Relay on/off indicator - Working on 30A (single-line) devices; unknown on 50A (dual-line) devices since no confirmed relay-status byte exists for them (see [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14))
 
+> **Help wanted: Relay status on 50A (dual-line) devices.** We don't yet know which byte reports live relay state on 50A V2 devices (confirmed separately from 30A devices — see [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14)). It's also unconfirmed whether the Power Relay switch's on/off *command* actually toggles the relay on 50A devices — only the status *readback* has been tested, and that test is what's broken. If you have a **50A Gen 2 device** (dual-line, e.g. WD_E5/WD_E6/WD_V6/WD_E7), you can help by capturing two short debug-log samples — one with the relay closed and one with it open — and posting them to **[a new issue](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/new)**. See [Capturing Relay State Data (50A devices)](#capturing-relay-state-data-50a-devices) below for exact steps.
+
 **If you have a Gen 2 device**, please help us by:
 1. Enabling debug logging (see below)
 2. Checking if the readings match your Hughes mobile app
@@ -167,6 +169,19 @@ logger:
 ```
 
 Then check your Home Assistant logs for entries prefixed with `[V2]` or `[V1]`.
+
+### Capturing Relay State Data (50A Devices)
+
+If you have a 50A (dual-line) Gen 2 device, here's how to help us find the correct relay-status byte:
+
+1. Enable debug logging (see above) and restart Home Assistant.
+2. With the relay **closed** (power flowing normally), wait a few seconds, then open **Settings → System → Logs** (or your log file) and copy **5-10 consecutive lines** containing `V2: Complete packet` or `V2: Extended fields` for your device.
+3. Open the relay using the **Power Relay** switch in Home Assistant. **Note whether the relay audibly or visibly clicked/opened** — this confirms whether the command itself reached the device, which hasn't been verified on 50A devices.
+4. Wait 5-10 seconds — the status byte can lag a second or two on 30A devices, so give it time — then copy another **5-10 consecutive lines** of the same log entries.
+5. Post both sets of log lines (labeled "relay closed" and "relay open"), whether the relay physically responded in step 3, and your exact device model (e.g. WD_E5, WD_E6, WD_V6, WD_E7), as a comment on **[a new issue](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/new)**.
+6. Close the relay again afterward via the switch to restore normal operation.
+
+Debug logs include your device's raw BLE packet bytes but no personal information.
 
 ## Requirements
 
