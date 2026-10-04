@@ -29,7 +29,7 @@ Entry point for the integration. Creates the `HughesPowerWatchdogCoordinator` an
 All constants organized by section:
 - **Device name prefixes** - V1 (PMD/PWS/PMS) and V2 (WD_V5/WD_E5/WD_V6/WD_E6/WD_E7)
 - **V1 protocol** - Service/characteristic UUIDs, byte positions for 40-byte data packets, frequency field (bytes 31-34), ASCII command strings (relayOn, reset, setTime, backLight, deleteAllRecord)
-- **V2 protocol** - Service/characteristic UUID, framing constants ($yw@ header, q! tail), protocol version, sequence max, command IDs (0x01-0x0D), message types, byte positions for all single-block fields (bytes 9-42), dual-block Line 2 fields (bytes 43-76), relay/neutral command payload values, ResultRes success code. Byte 34/68 is the neutral-monitoring enable/bypass setting (not a fault flag) and byte 42/76 is a block/line identifier (not relay status) — see issue #14.
+- **V2 protocol** - Service/characteristic UUID, framing constants ($yw@ header, q! tail), protocol version, sequence max, command IDs (0x01-0x0D), message types, byte positions for all single-block fields (bytes 9-42), dual-block Line 2 fields (bytes 43-76), relay/neutral command payload values, ResultRes success code. Byte 34/68 is the neutral-monitoring enable/bypass setting (not a fault flag). Byte 42 is relay status on single-block (30A) packets, but a block/line identifier (not relay status) on dual-block (50A) packets, as is byte 76 — see issue #14.
 - **Sensor keys** - String identifiers for all sensor types including backlight
 - **Entity keys** - Switch (monitoring, relay, neutral detection control), button (energy reset, error delete), light (backlight)
 - **Error codes** - E1-E9, F1-F2 mapping dict
@@ -40,7 +40,7 @@ The core BLE data coordinator. Key responsibilities:
 - **Protocol detection** - Two-step: name-based guess, then service UUID confirmation
 - **Connection management** - Lock-protected connect/disconnect, exponential backoff retry
 - **V1 notification handler** - Buffers incoming chunks and drains every complete 40-byte packet from the buffer per notification (50A dual-line devices send Line 1 and Line 2 as two concatenated packets in one notification), extracts V/I/P/E/error/frequency per packet, identifies Line 1 vs Line 2
-- **V2 notification handler** - Parses $yw@ framed packets, extracts all fields including extended fields (output voltage, frequency, temperature, error code, power factor, boost mode, neutral monitoring setting, backlight). Also detects ResultRes acknowledgment packets for command responses.
+- **V2 notification handler** - Parses $yw@ framed packets, extracts all fields including extended fields (output voltage, frequency, temperature, error code, power factor, boost mode, neutral monitoring setting, relay status [30A only], backlight). Also detects ResultRes acknowledgment packets for command responses.
 - **V2 dual-block decoder** - Handles 79-byte packets from 50A devices with two 34-byte data blocks
 - **Data dict builder** - Assembles all sensor values into dict for entity updates
 - **Health monitor** - Background task detecting stale notifications for auto-reconnect
@@ -54,7 +54,7 @@ Key methods:
 - `_notification_handler_v1()` / `_notification_handler_v2()` - Push notification callbacks
 - `_parse_data_packet_v1(packet: bytes) -> bool` - Parses one complete 40-byte V1 packet (sliced from the buffer by the caller); returns `True` if the packet had a valid data header and was parsed
 - `_parse_data_packet_v2()` - V2 variable-length packet parser, with ResultRes ack detection
-- `_parse_v2_extended_fields()` - Extracts bytes 25-42 (power factor, output voltage [booster models only], freq, temp, error, line ID, boost, neutral monitoring setting, backlight)
+- `_parse_v2_extended_fields(data, is_dual_block)` - Extracts bytes 25-42 (power factor, output voltage [booster models only], freq, temp, error, boost, neutral monitoring setting, backlight). Byte 42 is relay status when `is_dual_block` is False (30A packets), or ignored (block/line ID, not relay state) when True (50A packets)
 - `_decode_v2_dual_block_line2()` - Extracts Line 2 from dual-block 50A packets, stores L2 frequency and L2 power factor
 - `_build_data_dict()` - Assembles final sensor data dict; Line 2 keys only included when dual-line
 - `_next_sequence()` - V2 sequence number (1-100 cycling)
@@ -89,10 +89,9 @@ Sensor creation is gated by device capabilities:
 
 ### `binary_sensor.py`
 HA binary sensor entities (V2 protocol only):
+- `HughesPowerWatchdogRelayStatusSensor` - Power relay ON/OFF (POWER device class). Byte 42 is relay status on single-block (30A) packets, but a block/line identifier (not relay state) on dual-block (50A) packets, so the sensor is unavailable on 50A devices. See issue #14.
 - `HughesPowerWatchdogNeutralDetectionSensor` - Neutral problem detected (PROBLEM device class). Reflects error code 8 ("No neutral circuit detected"), not the neutral monitoring enable/bypass setting — see issue #14.
 - `HughesPowerWatchdogBoostModeSensor` - Autoformer boost active/inactive. Only created for booster models (`coordinator.has_booster` → V8/V9/E8/E9).
-
-There is no Relay Status binary sensor: byte 42/76, previously read as relay ON/OFF, is actually a block/line identifier that never changes with real relay state (issue #14). No correct relay-status byte is currently known.
 
 ### `button.py`
 HA button entities (**V2 only** — V1 command support is work-in-progress):
@@ -110,7 +109,7 @@ HA light entity with brightness control (**V2 only** — V1 command support is w
 ### `switch.py`
 HA switch entities:
 - `HughesPowerWatchdogMonitoringSwitch` - Enables/disables BLE connection and data streaming (all devices)
-- `HughesPowerWatchdogRelaySwitch` - Power relay on/off control (**V2 only** — V1 command support is work-in-progress). `is_on` always returns `None` (unknown) on V2 since no relay-status byte is known (issue #14); commands still work.
+- `HughesPowerWatchdogRelaySwitch` - Power relay on/off control (**V2 only** — V1 command support is work-in-progress). `is_on` reads real relay status on single-block (30A) devices; returns `None` (unknown) on dual-block (50A) devices since no relay-status byte is known there (issue #14) — commands still work on both.
 - `HughesPowerWatchdogNeutralDetectionControlSwitch` - Enable/disable neutral detection monitoring (V2 only). `is_on` reads the device's real monitoring-enabled/bypassed byte. Distinct from the NeutralDetection binary sensor, which shows fault status (error code 8), not the monitoring setting.
 
 ## Data Flow
@@ -150,8 +149,8 @@ BLE write to device characteristic
 | Protocol | Packet Size | Encoding | Sensors |
 |----------|-------------|----------|---------|
 | V1 | 40 bytes (2x20 chunks) | Signed int32/10000 | V, I, P, E, error, frequency |
-| V2 single-block | 45 bytes | Unsigned int32/10000 | V, I, P, E + output V, freq, temp, error, power factor, boost, neutral monitoring, line ID, backlight |
-| V2 dual-block | 79 bytes | Same | Same + Line 2 of all fields |
+| V2 single-block | 45 bytes | Unsigned int32/10000 | V, I, P, E + output V, freq, temp, error, power factor, boost, neutral monitoring, relay status, backlight |
+| V2 dual-block | 79 bytes | Same | Same + Line 2 of all fields; byte 42 becomes line ID instead of relay status |
 
 ## Command Summary
 

@@ -117,7 +117,7 @@ V2_BYTE_TEMPERATURE = 36
 V2_BYTE_FREQUENCY_START = 37
 V2_BYTE_FREQUENCY_END = 41
 V2_BYTE_ERROR_CODE = 41
-V2_BYTE_LINE_ID = 42  # Block/line identifier (0x00=L1, 0x01=L2) - not relay state
+V2_BYTE_LINE_ID = 42  # Relay status (0x00=ON) on single-block packets; block/line ID (0x00=L1, 0x01=L2), not relay state, on dual-block packets - see issue #14
 
 # V2 minimum packet sizes
 V2_MIN_DATA_PACKET_SIZE = 21  # Minimum for L1 V/I/P extraction
@@ -215,6 +215,7 @@ SENSOR_FREQUENCY = "frequency"
 SENSOR_FREQUENCY_L2 = "frequency_line_2"
 SENSOR_OUTPUT_VOLTAGE = "output_voltage"
 SENSOR_TEMPERATURE = "temperature"
+SENSOR_RELAY_STATUS = "relay_status"
 SENSOR_BOOST_MODE = "boost_mode"
 SENSOR_NEUTRAL_DETECTION = "neutral_detection"
 SENSOR_NEUTRAL_MONITORING_ENABLED = "neutral_monitoring_enabled"

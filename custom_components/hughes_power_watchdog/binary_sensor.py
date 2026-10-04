@@ -17,6 +17,7 @@ from .const import (
     DOMAIN,
     SENSOR_BOOST_MODE,
     SENSOR_NEUTRAL_DETECTION,
+    SENSOR_RELAY_STATUS,
 )
 from .coordinator import HughesPowerWatchdogCoordinator
 
@@ -38,6 +39,7 @@ async def async_setup_entry(
         return
 
     entities = [
+        HughesPowerWatchdogRelayStatusSensor(coordinator),
         HughesPowerWatchdogNeutralDetectionSensor(coordinator),
     ]
 
@@ -72,6 +74,34 @@ class HughesPowerWatchdogBinarySensor(
             and self.coordinator.last_update_success
             and self.coordinator.data.get(self._sensor_type) is not None
         )
+
+
+class HughesPowerWatchdogRelayStatusSensor(HughesPowerWatchdogBinarySensor):
+    """Relay status binary sensor (V2 only).
+
+    Relay status byte: 0x00 = ON (power flowing), 0x01 or 0x02 = OFF/Error
+    (tripped). Only meaningful on single-block (30A) devices - on
+    dual-block (50A) devices this byte position is a block/line
+    identifier, not relay state, so the sensor reports unavailable there.
+    See issue #14.
+    is_on = True means relay is ON (power flowing, normal operation).
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.POWER
+    _attr_icon = "mdi:electric-switch"
+
+    def __init__(self, coordinator: HughesPowerWatchdogCoordinator) -> None:
+        """Initialize relay status sensor."""
+        super().__init__(coordinator, SENSOR_RELAY_STATUS)
+        self._attr_name = "Relay Status"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if relay is ON (power flowing)."""
+        val = self.coordinator.data.get(self._sensor_type)
+        if val is None:
+            return None
+        return val == 0x00
 
 
 class HughesPowerWatchdogBoostModeSensor(HughesPowerWatchdogBinarySensor):
