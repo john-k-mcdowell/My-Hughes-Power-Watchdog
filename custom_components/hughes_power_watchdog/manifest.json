@@ -25,6 +25,9 @@
     },
     {
       "local_name": "WD_E7*"
+    },
+    {
+      "local_name": "WD_V7*"
     }
   ],
   "codeowners": ["@john-k-mcdowell"],
@@ -33,5 +36,5 @@
   "documentation": "https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues",
-  "version": "0.10.1"
+  "version": "0.10.2"
 }

@@ -1,5 +1,11 @@
 # How It Works - Hughes Power Watchdog Integration
 
+This document describes the architecture, files, modules, and functions of the Hughes Power Watchdog Home Assistant integration.
+
+## Project Overview
+
+A custom Home Assistant integration that connects directly over Bluetooth Low Energy (BLE) to Hughes Power Watchdog surge protectors (V1: PMD/PWS/PMS, V2: WD_V5/E5/V6/E6/E7), with no ESP32 bridge required (ESPHome Bluetooth proxies also work). It keeps a persistent BLE connection with push notifications, a command queue for device control, and a health monitor for stale connections. The original ESPHome reference implementation is in `Original_Starting_Point/`; protocol byte maps are in `docs/protocol.md`.
+
 ## File Structure
 
 ```
@@ -16,6 +22,7 @@ custom_components/hughes_power_watchdog/
   sensor.py          - Sensor entities (voltage, current, power, energy, etc.)
   strings.json       - UI strings for config flow (source for translations/en.json)
   switch.py          - Switch entities (monitoring, relay, neutral detection control)
+  todo.py            - To-Do list entity showing the device error log
   translations/      - Translated config flow strings (en.json)
   version.py         - Version string
 ```
@@ -23,11 +30,11 @@ custom_components/hughes_power_watchdog/
 ## Module Descriptions
 
 ### `__init__.py`
-Entry point for the integration. Creates the `HughesPowerWatchdogCoordinator` and forwards platform setup to sensor, binary_sensor, switch, button, and light modules.
+Entry point for the integration. Creates the `HughesPowerWatchdogCoordinator` and forwards platform setup to sensor, binary_sensor, switch, button, light, and todo modules.
 
 ### `const.py`
 All constants organized by section:
-- **Device name prefixes** - V1 (PMD/PWS/PMS) and V2 (WD_V5/WD_E5/WD_V6/WD_E6/WD_E7)
+- **Device name prefixes** - V1 (PMD/PWS/PMS) and V2 (WD_V5/WD_E5/WD_V6/WD_E6/WD_E7/WD_V7)
 - **V1 protocol** - Service/characteristic UUIDs, byte positions for 40-byte data packets, frequency field (bytes 31-34), ASCII command strings (relayOn, reset, setTime, backLight, deleteAllRecord)
 - **V2 protocol** - Service/characteristic UUID, framing constants ($yw@ header, q! tail), protocol version, sequence max, command IDs (0x01-0x0D), message types, byte positions for all single-block fields (bytes 9-42), dual-block Line 2 fields (bytes 43-76), relay/neutral command payload values, ResultRes success code. Byte 34/68 is the neutral-monitoring enable/bypass setting (not a fault flag). Byte 42 is relay status on single-block (30A) packets, but a block/line identifier (not relay status) on dual-block (50A) packets, as is byte 76 — see issue #14.
 - **Sensor keys** - String identifiers for all sensor types including backlight
@@ -105,6 +112,10 @@ HA light entity with brightness control (**V2 only** — V1 command support is w
   - Maps to discrete device levels: V2 = 0-5 (V1 = 0-4 when V1 commands are enabled)
   - To device: `round(ha_brightness / 255 * max_level)`
   - From device: `device_level / max_level * 255` (V2 reads from data stream byte 33)
+
+### `todo.py`
+HA To-Do list platform:
+- `HughesPowerWatchdogErrorList` - "Error Log" list built from parsed device error records (`coordinator.data["errors"]`). On V2, checking an item or using the trash can deletes that record from the device via `coordinator.async_delete_error_record()`. On V1 it is read-only (V1 delete commands are not yet functional).
 
 ### `switch.py`
 HA switch entities:
