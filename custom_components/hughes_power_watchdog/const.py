@@ -10,6 +10,7 @@ PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.LIGHT, Platform.S
 
 # Configuration
 CONF_MAC_ADDRESS = "mac_address"
+CONF_DUAL_LINE = "dual_line"
 
 # Device name prefixes that we look for
 # V1 devices: PMD, PWS, PMS (use V1/legacy protocol)
