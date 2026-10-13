@@ -218,6 +218,8 @@ Additional protocol details cross-referenced against the independent [TechBluepr
 ### Contributors
 - [IAmTheMitchell](https://github.com/IAmTheMitchell) — Gen 2 WD_E5 device support, V2 50A Line 2 sensor fix, protocol documentation for dual-block packet format
 - [gearhead765](https://github.com/gearhead765) — Error Log feature and testing (v0.9.0)
+- [brianfinley](https://github.com/brianfinley) — WD_V7 (PWD30EPOHW) device support and hardware testing (v0.10.2)
+- [snoack](https://github.com/snoack) — Resubscribe after dropped BLE connections, remembering dual-line (50A) devices to fix missing Line 2 sensors, and fixing energy total drops (v0.10.3); 50A relay-state capture (#17)
 
 ## License
 
