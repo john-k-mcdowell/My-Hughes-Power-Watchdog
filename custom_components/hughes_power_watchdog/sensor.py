@@ -18,7 +18,7 @@ from homeassistant.const import (
     UnitOfPower,
     UnitOfTemperature,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -66,16 +66,6 @@ async def async_setup_entry(
         HughesPowerWatchdogFrequencySensor(coordinator),
     ]
 
-    # Dual-line sensors (50A devices only - both V1 and V2)
-    if coordinator.is_dual_line:
-        sensors.extend([
-            HughesPowerWatchdogVoltageSensor(coordinator, SENSOR_VOLTAGE_L2, "Line 2"),
-            HughesPowerWatchdogCurrentSensor(coordinator, SENSOR_CURRENT_L2, "Line 2"),
-            HughesPowerWatchdogPowerSensor(coordinator, SENSOR_POWER_L2, "Line 2"),
-            HughesPowerWatchdogPowerSensor(coordinator, SENSOR_COMBINED_POWER, "Combined"),
-            HughesPowerWatchdogFrequencyLineSensor(coordinator, SENSOR_FREQUENCY_L2, "Line 2"),
-        ])
-
     # Booster-only sensors (V8/V9/E8/E9 only). On V5/E5/V6/E6, output voltage
     # mirrors the energy counter and temperature reads as zero.
     if coordinator.is_v2_protocol and coordinator.has_booster:
@@ -87,12 +77,46 @@ async def async_setup_entry(
         sensors.append(
             HughesPowerWatchdogPowerFactorSensor(coordinator, SENSOR_POWER_FACTOR, "Line 1")
         )
-        if coordinator.is_dual_line:
-            sensors.append(
-                HughesPowerWatchdogPowerFactorSensor(coordinator, SENSOR_POWER_FACTOR_L2, "Line 2")
-            )
+
+    # Dual-line sensors (50A devices only - both V1 and V2). Line 2 data
+    # arrives with the BLE notifications, which may not have happened yet,
+    # so the sensors are added once the first Line 2 data arrives.
+    if coordinator.is_dual_line:
+        sensors.extend(_line_2_sensors(coordinator))
+    else:
+        line_2_added = False
+
+        @callback
+        def _async_add_line_2_sensors() -> None:
+            nonlocal line_2_added
+            if not line_2_added and coordinator.is_dual_line:
+                line_2_added = True
+                async_add_entities(_line_2_sensors(coordinator))
+
+        config_entry.async_on_unload(
+            coordinator.async_add_listener(_async_add_line_2_sensors)
+        )
 
     async_add_entities(sensors)
+
+
+def _line_2_sensors(
+    coordinator: HughesPowerWatchdogCoordinator,
+) -> list[HughesPowerWatchdogSensor]:
+    """Return the sensors of dual-line (50A) devices."""
+    sensors: list[HughesPowerWatchdogSensor] = [
+        HughesPowerWatchdogVoltageSensor(coordinator, SENSOR_VOLTAGE_L2, "Line 2"),
+        HughesPowerWatchdogCurrentSensor(coordinator, SENSOR_CURRENT_L2, "Line 2"),
+        HughesPowerWatchdogPowerSensor(coordinator, SENSOR_POWER_L2, "Line 2"),
+        HughesPowerWatchdogPowerSensor(coordinator, SENSOR_COMBINED_POWER, "Combined"),
+        HughesPowerWatchdogFrequencyLineSensor(coordinator, SENSOR_FREQUENCY_L2, "Line 2"),
+    ]
+    # Power factor (V2 only - not present in the V1 protocol)
+    if coordinator.is_v2_protocol:
+        sensors.append(
+            HughesPowerWatchdogPowerFactorSensor(coordinator, SENSOR_POWER_FACTOR_L2, "Line 2")
+        )
+    return sensors
 
 
 class HughesPowerWatchdogSensor(CoordinatorEntity[HughesPowerWatchdogCoordinator], SensorEntity):

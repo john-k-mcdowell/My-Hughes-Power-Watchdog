@@ -120,6 +120,7 @@ from .const import (
     # V1 protocol UUIDs
     LEGACY_SERVICE_UUID,
     # Shared constants
+    CONF_DUAL_LINE,
     CONNECTION_CHECK_INTERVAL,
     CONNECTION_DELAY_REDUCTION,
     CONNECTION_MAX_ATTEMPTS,
@@ -178,6 +179,10 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.device_name: str = config_entry.title
         self.config_entry = config_entry
 
+        # Whether the device has a second line (50A). It's only known once
+        # Line 2 data arrives, so it's remembered across restarts.
+        self._is_dual_line: bool = config_entry.data.get(CONF_DUAL_LINE, False)
+
         # Protocol detection - initially based on device name, confirmed by service discovery
         self._is_v2_protocol: bool | None = None
         self._protocol_detected_by_service: bool = False
@@ -209,6 +214,8 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._data_buffer: bytearray = bytearray()
         self._line_1_data: dict[str, float] = {}
         self._line_2_data: dict[str, float] = {}
+        # Last known Line 2 energy, kept when a packet lacks valid Line 2 data
+        self._line_2_energy: float | None = None
         self._error_code: int = 0
         self._frequency: float | None = None
         self._frequency_l2: float | None = None
@@ -369,7 +376,17 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @property
     def is_dual_line(self) -> bool:
         """Return True if device reports dual-line (50A) data."""
-        return bool(self._line_2_data)
+        return self._is_dual_line
+
+    def _set_dual_line(self) -> None:
+        """Remember that the device has a second line (50A)."""
+        if self._is_dual_line:
+            return
+        self._is_dual_line = True
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            data={**self.config_entry.data, CONF_DUAL_LINE: True},
+        )
 
     @property
     def has_booster(self) -> bool:
@@ -767,9 +784,13 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             True on success, False on failure.
         """
         if self._is_v2_protocol:
-            return await self._send_v2_command(V2_CMD_ENERGY_RESET)
+            success = await self._send_v2_command(V2_CMD_ENERGY_RESET)
         else:
-            return await self._send_v1_command(V1_CMD_ENERGY_RESET)
+            success = await self._send_v1_command(V1_CMD_ENERGY_RESET)
+        if success:
+            # Withhold the total until Line 2 reports its reset counter too
+            self._line_2_energy = None
+        return success
 
     async def async_sync_time(self) -> bool:
         """Sync the device clock to the current system time.
@@ -1187,6 +1208,8 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "power": power,
                 "energy": energy,
             }
+            self._line_2_energy = energy
+            self._set_dual_line()
             _LOGGER.debug("[%s] V1: Line 2 data: %s", self.device_name, self._line_2_data)
         else:
             _LOGGER.warning("[%s] V1: Unknown line identifier: %s", self.device_name, line_id.hex())
@@ -1386,6 +1409,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             self._line_2_data = None
             if is_dual_block:
+                self._set_dual_line()
                 self._decode_v2_dual_block_line2(data)
 
             _LOGGER.debug(
@@ -1565,6 +1589,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "power": l2_power,
             "energy": l2_energy,
         }
+        self._line_2_energy = l2_energy
 
         _LOGGER.debug(
             "[%s] V2: Line 2 - V=%.2fV I=%.2fA P=%.2fW E=%.2fkWh (dual-block)",
@@ -1689,12 +1714,18 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data[SENSOR_VOLTAGE_L1] = self._line_1_data.get("voltage")
             data[SENSOR_CURRENT_L1] = self._line_1_data.get("current")
             data[SENSOR_POWER_L1] = self._line_1_data.get("power")
-            # Cumulative energy: sum L1 + L2 for 50A devices
+            # Cumulative energy: sum L1 + L2 for 50A devices. Not every
+            # packet has valid L2 data (V1 sends the lines separately, and a
+            # V2 packet's L2 block may be out of range, e.g. during a voltage
+            # sag), so the last known L2 energy is used, and the total is
+            # withheld until it's known. Reporting L1 alone would make Home
+            # Assistant record a meter reset and count the whole total again.
             total_energy = self._line_1_data.get("energy")
-            if self._line_2_data:
-                line_2_energy = self._line_2_data.get("energy")
-                if total_energy is not None and line_2_energy is not None:
-                    total_energy = total_energy + line_2_energy
+            if self._is_dual_line:
+                if total_energy is None or self._line_2_energy is None:
+                    total_energy = None
+                else:
+                    total_energy += self._line_2_energy
             data[SENSOR_TOTAL_POWER] = total_energy
 
         # Line 2 data (50A dual-line units only)
