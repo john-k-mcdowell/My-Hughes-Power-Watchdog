@@ -431,6 +431,10 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._client = await establish_connection(
                         BleakClient, ble_device, self.address
                     )
+                    # A new connection has no init or subscriptions yet,
+                    # even if the previous one was dropped by the device
+                    # rather than closed through _disconnect().
+                    self._reset_session_state()
 
                     # Success - reduce delay for next time
                     self._connect_delay = max(
@@ -492,10 +496,14 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.debug("Error disconnecting from %s: %s", self.address, err)
                 finally:
                     self._client = None
-                    self._v2_initialized = False
-                    self._v2_notifications_active = False
-                    self._v1_notifications_active = False
-                    self._time_synced = False
+                    self._reset_session_state()
+
+    def _reset_session_state(self) -> None:
+        """Forget the init and subscription state of the BLE connection."""
+        self._v2_initialized = False
+        self._v2_notifications_active = False
+        self._v1_notifications_active = False
+        self._time_synced = False
 
     async def _monitor_connection_health(self) -> None:
         """Monitor connection health and detect stale notifications.
