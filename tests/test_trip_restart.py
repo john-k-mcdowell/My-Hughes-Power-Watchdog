@@ -10,10 +10,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from bleak.exc import BleakError
+from homeassistant.helpers.update_coordinator import UpdateFailed
+
 from custom_components.hughes_power_watchdog.button import (
     HughesPowerWatchdogTripRestartButton,
+    async_setup_entry as button_setup_entry,
 )
 from custom_components.hughes_power_watchdog.const import DOMAIN, V1_TRIP_LATCH_SECONDS
+
+from .packets import v1_packet
 from custom_components.hughes_power_watchdog.coordinator import (
     HughesPowerWatchdogCoordinator,
 )
@@ -217,3 +223,141 @@ async def test_button_press_without_trip_raises(coordinator_factory) -> None:
     with pytest.raises(HomeAssistantError):
         await button.async_press()
     client.write_gatt_char.assert_not_awaited()
+
+
+# --- characteristic lookup and failure paths --------------------------------
+
+
+async def test_refused_when_characteristic_missing(coordinator_factory) -> None:
+    """Nothing is sent if the device has no 0xFFF5 characteristic at all."""
+    coordinator, client = coordinator_factory()
+    client.services[1].characteristics = [
+        c for c in client.services[1].characteristics if c.uuid != FFF5
+    ]
+    assert await coordinator.async_restart_after_trip() is False
+    client.write_gatt_char.assert_not_awaited()
+
+
+async def test_ignores_characteristic_in_non_vendor_service(
+    coordinator_factory,
+) -> None:
+    """0xFFF5 under a standard (non-0000Fxxx) service is not the command channel."""
+    coordinator, _ = coordinator_factory()
+    other = _client(["write", "write-without-response"], service_uuid=FFE0[:4] + "1800" + FFE0[8:])
+    coordinator._ensure_connected = AsyncMock(return_value=other)
+
+    assert await coordinator.async_restart_after_trip() is False
+    other.write_gatt_char.assert_not_awaited()
+
+
+async def test_ble_write_error_returns_false(coordinator_factory) -> None:
+    """A BLE write failure is reported as a failed command, not raised."""
+    coordinator, client = coordinator_factory()
+    client.write_gatt_char.side_effect = BleakError("write failed")
+    assert await coordinator.async_restart_after_trip() is False
+    assert coordinator.trip_restart_info["last_sent"] is None
+
+
+async def test_connection_failure_returns_false(coordinator_factory) -> None:
+    """Failing to connect is reported as a failed command."""
+    coordinator, _ = coordinator_factory()
+    coordinator._ensure_connected = AsyncMock(side_effect=UpdateFailed("no device"))
+    assert await coordinator.async_restart_after_trip() is False
+
+
+# --- command acknowledgments on 0xFFE2 --------------------------------------
+
+
+@pytest.mark.parametrize(
+    "reply", [b"relay on", b"RESET", b"del:recA", b"set:t", b"set:bl3"]
+)
+async def test_known_replies_are_not_buffered(
+    coordinator_factory, reply: bytes
+) -> None:
+    """Every known ASCII ack is recorded and kept out of the data buffer."""
+    coordinator, _ = coordinator_factory()
+    coordinator._notification_handler_v1(0, bytearray(reply))
+
+    assert coordinator.trip_restart_info["last_reply"] == reply.decode()
+    assert len(coordinator._data_buffer) == 0
+
+
+async def test_reply_between_chunks_does_not_corrupt_packet(
+    coordinator_factory,
+) -> None:
+    """An ack arriving mid-packet leaves the half-filled buffer intact."""
+    coordinator, _ = coordinator_factory(error_code=0)
+    packet = v1_packet(1, voltage=121.5, energy=42.0)
+
+    coordinator._notification_handler_v1(0, bytearray(packet[:20]))
+    coordinator._notification_handler_v1(0, bytearray(b"relay on"))
+    assert len(coordinator._data_buffer) == 20
+    coordinator._notification_handler_v1(0, bytearray(packet[20:]))
+
+    assert coordinator.data["voltage_line_1"] == pytest.approx(121.5)
+    assert coordinator.data["total_power"] == pytest.approx(42.0)
+    assert coordinator.trip_restart_info["last_reply"] == "relay on"
+
+
+# --- button entity and platform setup ---------------------------------------
+
+
+async def test_button_press_writes_state(hass: HomeAssistant, coordinator_factory) -> None:
+    """A successful press refreshes the entity state."""
+    coordinator, _ = coordinator_factory()
+    button = HughesPowerWatchdogTripRestartButton(coordinator)
+    button.hass = hass
+    button.async_write_ha_state = MagicMock()
+
+    await button.async_press()
+    button.async_write_ha_state.assert_called_once()
+
+
+async def test_button_press_failure_raises(coordinator_factory) -> None:
+    """A failed write surfaces as a HomeAssistantError."""
+    coordinator, client = coordinator_factory()
+    client.write_gatt_char.side_effect = BleakError("write failed")
+    button = HughesPowerWatchdogTripRestartButton(coordinator)
+    with pytest.raises(HomeAssistantError):
+        await button.async_press()
+
+
+async def test_button_identity_and_availability(coordinator_factory) -> None:
+    """Stable unique ID, device info, and availability follow monitoring."""
+    coordinator, _ = coordinator_factory()
+    button = HughesPowerWatchdogTripRestartButton(coordinator)
+
+    assert button.unique_id == f"{coordinator.config_entry.entry_id}_trip_restart"
+    assert button.has_entity_name is True
+    assert button.device_info == coordinator.device_info
+
+    coordinator.last_update_success = True
+    coordinator._monitoring_enabled = True
+    assert button.available is True
+    coordinator._monitoring_enabled = False
+    assert button.available is False
+
+
+async def test_button_attributes_before_any_command(coordinator_factory) -> None:
+    """Attributes are None until a command is sent and answered."""
+    coordinator, _ = coordinator_factory()
+    attrs = HughesPowerWatchdogTripRestartButton(coordinator).extra_state_attributes
+    assert attrs == {"last_sent": None, "last_reply": None, "last_reply_time": None}
+
+
+async def test_platform_adds_trip_button_only_on_v1(
+    hass: HomeAssistant, coordinator_factory
+) -> None:
+    """V1 gets only the restart button; V2 gets its own buttons, never this one."""
+    v1, _ = coordinator_factory(name="PMS0000000000000000")
+    hass.data.setdefault(DOMAIN, {})[v1.config_entry.entry_id] = v1
+    added: list = []
+    await button_setup_entry(hass, v1.config_entry, lambda ents: added.extend(ents))
+    assert [type(e) for e in added] == [HughesPowerWatchdogTripRestartButton]
+
+    v2, _ = coordinator_factory(name="WD_V5_000000000000")
+    hass.data[DOMAIN][v2.config_entry.entry_id] = v2
+    added_v2: list = []
+    await button_setup_entry(hass, v2.config_entry, lambda ents: added_v2.extend(ents))
+    assert added_v2
+    assert not any(isinstance(e, HughesPowerWatchdogTripRestartButton) for e in added_v2)
