@@ -70,7 +70,7 @@ Key methods:
 - `_build_v2_command()` - Constructs $yw@ framed command packet
 - `_send_v2_command()` - Sends V2 command, optionally waits for ResultRes ack (5s timeout)
 - `_send_v1_command()` - Writes ASCII command to V1 command characteristic `0x1003` (write-with-response). Legacy path: it sends the app's enum names rather than the real wire strings, so the device ignores them and these V1 command entities are not exposed (see `docs/protocol.md`).
-- `async_restart_after_trip()` - V1 only. Writes the raw ASCII `RELAY ON` to `0xFFF5` (found via `_find_v1_write_characteristic()`), only while monitoring is on and the device reports E3/E4/E8. The device's `relay on` acknowledgment arrives on `0xFFE2`; `_notification_handler_v1()` records short ASCII command replies separately from the 40-byte data buffer.
+- `async_restart_after_trip()` - V1 only. Writes the raw ASCII `RELAY ON` to `0xFFF5` (found via `_find_v1_write_characteristic()`), only while monitoring is on and a trip error (E3/E4/E8) has been seen within `V1_TRIP_LATCH_SECONDS` (`active_trip_code`). The latch exists because 50A devices send Line 1 and Line 2 as separate packets that each overwrite the stored error code; `_record_v1_error_code()` stores the code and latches trip errors. The device's `relay on` acknowledgment arrives on `0xFFE2`; `_notification_handler_v1()` records short ASCII command replies separately from the 40-byte data buffer.
 
 Key properties:
 - `is_v2_protocol` - True for V2 devices (WD_V5/E5/V6/E6)

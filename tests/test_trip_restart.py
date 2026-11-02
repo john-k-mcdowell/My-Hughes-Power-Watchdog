@@ -13,7 +13,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.hughes_power_watchdog.button import (
     HughesPowerWatchdogTripRestartButton,
 )
-from custom_components.hughes_power_watchdog.const import DOMAIN
+from custom_components.hughes_power_watchdog.const import DOMAIN, V1_TRIP_LATCH_SECONDS
 from custom_components.hughes_power_watchdog.coordinator import (
     HughesPowerWatchdogCoordinator,
 )
@@ -67,7 +67,7 @@ def _coordinator(
         coordinator = HughesPowerWatchdogCoordinator(hass, entry)
     # Outside of entry setup DataUpdateCoordinator resets config_entry to None
     coordinator.config_entry = entry
-    coordinator._error_code = error_code
+    coordinator._record_v1_error_code(error_code)
     client = _client(
         ["write", "write-without-response"] if properties is None else properties
     )
@@ -154,6 +154,30 @@ async def test_refused_without_writable_characteristic(coordinator_factory) -> N
     """Nothing is sent if 0xFFF5 is missing or not writable."""
     coordinator, client = coordinator_factory(properties=["read"])
     assert await coordinator.async_restart_after_trip() is False
+    client.write_gatt_char.assert_not_awaited()
+
+
+async def test_trip_latched_across_line_packets(coordinator_factory) -> None:
+    """A trip seen on one line's packet survives a clean packet from the other."""
+    coordinator, client = coordinator_factory(error_code=3)
+    coordinator._record_v1_error_code(0)  # other line's packet reports no error
+    assert coordinator.error_code == 0
+    assert coordinator.active_trip_code == 3
+
+    assert await coordinator.async_restart_after_trip() is True
+    client.write_gatt_char.assert_awaited_once()
+
+
+async def test_trip_latch_expires(coordinator_factory) -> None:
+    """The latch only holds for V1_TRIP_LATCH_SECONDS."""
+    coordinator, client = coordinator_factory(error_code=4)
+    latched_at = coordinator._trip_latch[1]
+    with patch(
+        "custom_components.hughes_power_watchdog.coordinator.time.time",
+        return_value=latched_at + V1_TRIP_LATCH_SECONDS + 1,
+    ):
+        assert coordinator.active_trip_code is None
+        assert await coordinator.async_restart_after_trip() is False
     client.write_gatt_char.assert_not_awaited()
 
 

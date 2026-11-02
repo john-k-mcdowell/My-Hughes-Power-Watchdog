@@ -52,6 +52,7 @@ from .const import (
     V1_CMD_RELAY_ON,
     V1_CMD_SET_TIME,
     V1_COMMAND_REPLY_PREFIXES,
+    V1_TRIP_LATCH_SECONDS,
     V1_TRIP_RESTART_ERROR_CODES,
     V1_TRIP_RESTART_PAYLOAD,
     V1_TRIP_RESTART_REPLY,
@@ -253,6 +254,8 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # V1 restart-after-trip tracking (last command sent, last ASCII reply)
         self._last_trip_restart_sent: float | None = None
+        # Last trip error (E3/E4/E8) seen on any V1 packet, as (code, timestamp)
+        self._trip_latch: tuple[int, float] | None = None
         self._last_command_reply: str | None = None
         self._last_command_reply_time: float | None = None
 
@@ -390,6 +393,20 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def error_code(self) -> int:
         """Return the last error code reported by the device."""
         return self._error_code
+
+    @property
+    def active_trip_code(self) -> int | None:
+        """Return the V1 trip error (3, 4 or 8) seen within the latch window.
+
+        50A devices report errors per line packet, so the stored error code
+        can flip between packets. This holds a trip for V1_TRIP_LATCH_SECONDS.
+        """
+        if self._trip_latch is None:
+            return None
+        code, seen = self._trip_latch
+        if time.time() - seen > V1_TRIP_LATCH_SECONDS:
+            return None
+        return code
 
     @property
     def trip_restart_info(self) -> dict[str, Any]:
@@ -951,7 +968,8 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.device_name,
             )
             return False
-        if self._error_code not in V1_TRIP_RESTART_ERROR_CODES:
+        trip_code = self.active_trip_code
+        if trip_code is None:
             _LOGGER.warning(
                 "[%s] V1: Restart after trip refused, error code is %d "
                 "(only sent for E3/E4/E8)",
@@ -993,7 +1011,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.info(
                 "[%s] V1: Sent restart after trip (error code %d, response=%s)",
                 self.device_name,
-                self._error_code,
+                trip_code,
                 response,
             )
             return True
@@ -1250,6 +1268,12 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if updated and self._line_1_data:
             self.async_set_updated_data(self._build_data_dict())
 
+    def _record_v1_error_code(self, error_code: int) -> None:
+        """Store a V1 packet's error code and latch trip errors (E3/E4/E8)."""
+        self._error_code = error_code
+        if error_code in V1_TRIP_RESTART_ERROR_CODES:
+            self._trip_latch = (error_code, time.time())
+
     def _parse_data_packet_v1(self, packet: bytes) -> bool:
         """Parse a single complete 40-byte V1 data packet.
 
@@ -1298,7 +1322,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Extract error code
         error_code = packet[BYTE_ERROR_CODE]
-        self._error_code = error_code
+        self._record_v1_error_code(error_code)
 
         # Extract frequency from chunk 2 (bytes 31-34, int32 / 100)
         freq_bytes = packet[V1_BYTE_FREQUENCY_START:V1_BYTE_FREQUENCY_END]

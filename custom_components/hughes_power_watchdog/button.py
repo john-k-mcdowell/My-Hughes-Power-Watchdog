@@ -18,7 +18,6 @@ from .const import (
     BUTTON_ERROR_DELETE,
     BUTTON_TRIP_RESTART,
     DOMAIN,
-    V1_TRIP_RESTART_ERROR_CODES,
 )
 from .coordinator import HughesPowerWatchdogCoordinator
 
@@ -166,10 +165,9 @@ class HughesPowerWatchdogTripRestartButton(
 
     async def async_press(self) -> None:
         """Handle the button press."""
-        error_code = self.coordinator.error_code
-        if error_code not in V1_TRIP_RESTART_ERROR_CODES:
+        if self.coordinator.active_trip_code is None:
             raise HomeAssistantError(
-                f"No trip to restart from (error code {error_code}); restart "
+                f"No trip to restart from (error code {self.coordinator.error_code}); restart "
                 "is only sent for E3/E4 (over-current) or E8 (neutral missing)"
             )
         if not await self.coordinator.async_restart_after_trip():

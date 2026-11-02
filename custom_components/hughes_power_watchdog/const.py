@@ -176,6 +176,10 @@ V1_TRIP_RESTART_REPLY = b"relay on"
 # Error codes for which the official app offers the restart:
 # 3 = Line 1 over-current, 4 = Line 2 over-current, 8 = neutral missing
 V1_TRIP_RESTART_ERROR_CODES = (3, 4, 8)
+# 50A devices send Line 1 and Line 2 as separate packets, each overwriting the
+# stored error code. A trip error is remembered this long so the restart gate
+# does not flap between packets.
+V1_TRIP_LATCH_SECONDS = 5.0
 
 # Short ASCII acknowledgments a V1 device sends on 0xFFE2 after a command.
 # These are not 20-byte data chunks and must be kept out of the packet buffer.
