@@ -153,34 +153,29 @@ Historical errors are transmitted in 16-byte chunks. Identified by ASCII `Er` at
 | 14 | 1 | Trailer | `45` (ASCII `E`) |
 | 15 | 1 | ErrorCode | Error code ID (1-9 for E1-E9, 11=F1, 12=F2) |
 
-### V1 Commands (App -> Device) — **Work in Progress**
+### V1 Commands (App -> Device)
 
-> **Status (as of v0.8.0-beta.8): V1 command support is not yet functional.** BLE writes are accepted by the device (the characteristic acknowledges the write at the GATT layer) but the Power Watchdog takes no action — no relay toggle, no energy reset, no ack string over the notification channel. The exact wire format used by the official `powerwatchdog2` app has not been captured yet and is still to be determined.
+V1 commands are **raw ASCII strings** written to characteristic `0xFFF5` (`0000fff5-0000-1000-8000-00805f9b34fb`) — no header, checksum, length byte or terminator, and no pairing or handshake. The official Gen 1 Android app (`com.hughes.epo` 3.2.1, internal package `radinet.powerwatchdog2`) looks up `0xFFE2` (notify) and `0xFFF5` (write) in any vendor service whose 16-bit UUID starts with `F` (`0000Fxxx`), and writes with Android's default write type for that characteristic. The device answers with a short ASCII string on the `0xFFE2` notify characteristic, interleaved with the normal 20-byte data chunks.
+
+The app maps its internal command names (an enum: `relayOn`, `reset`, ...) to different wire strings before writing them. The legacy `_send_v1_command` path in this integration sends the enum names themselves (e.g. `relayOn`) to `0x1003`, which explains why the device ignored them.
+
+| App command (enum) | Wire string written to `0xFFF5` | Ack on `0xFFE2` | Description | Status in this integration |
+|---------|-------------------|-------------------|-------------|------|
+| `relayOn` | `RELAY ON` (`52 45 4C 41 59 20 4F 4E`) | `relay on` | Restart power after a trip. The app only shows this button for errors 3 (L1 over-current), 4 (L2 over-current) and 8 (neutral missing) | **Implemented and tested** (Restart After Trip button) |
+| `reset` | `RESEt` (note the lowercase `t`) | `RESET` | Reset accumulated kWh to 0 | Not yet wired up (untested) |
+| `deleteIndexRecord` | `DEL:REC` + record number | `del:rec...` | Delete one error record | Not yet wired up (untested) |
+| `deleteAllRecord` | `DEL:RECA` | `del:rec...` | Delete all error history | Not yet wired up (untested) |
+| `setTime` | `SET:T` + 6 raw bytes `[year-2000, month, day, hour, minute, second]` | `set:t` | Sync device clock | Not yet wired up (untested) |
+| `backLight` | `SET:BL` + level digit | `set:bl...` | Set LED brightness (0-4) | Not yet wired up (untested) |
+| `powerOnTime` | `POWER ON TIME` | `power on time:` + 5 bytes | Request last power-on date/time | Not yet wired up (untested) |
+
+> **Restart After Trip (tested):** On a real Gen 1 device, after a forced over-current trip, writing `RELAY ON` to `0xFFF5` produced the `relay on` acknowledgment on `0xFFE2` and the Watchdog restored power. The integration only sends it while the device reports E3, E4 or E8, matching the app.
 >
-> During beta testing, the following combinations were all tried and all silently ignored by the device:
-> - Characteristic `0xfff5` with write-without-response
-> - Characteristic `0xfff5` with write-with-response
-> - Characteristic `0x1003` (discovered via GATT enumeration) with write-with-response
-> - Characteristic `0x1005` with write-with-response
-> - ASCII payload with no terminator, and with `\r\n` terminator
+> **Other V1 commands:** the wire strings above come from the same app code but have not been tested on hardware, so the corresponding entities (relay switch, backlight light, energy-reset button, error-delete button) remain hidden on V1 devices. The legacy code path (`_send_v1_command` in `coordinator.py`) still sends the enum names to `0x1003`.
 >
-> Until an HCI capture from the official Android app reveals the correct framing, **V1 command entities (relay switch, backlight light, energy-reset button, error-delete button) are hidden from Home Assistant on V1 devices.** The code paths remain in the codebase (`_send_v1_command` in `coordinator.py`) for future work.
->
-> The [TechBlueprints/dbus-power-watchdog](https://github.com/TechBlueprints/dbus-power-watchdog) reference implementation also does not send any V1 commands — its Gen 1 handler is explicitly receive-only, noting "Gen1 streams telemetry without a handshake."
+> **Note on the relay:** `RELAY ON` is a restart, not a toggle. The Gen 1 app has no command to open the relay.
 
-The ASCII command strings observed in the Android app (likely candidates once the wire format is understood):
-
-| Command | Expected Ack String | Description |
-|---------|-------------------|-------------|
-| `relayOn` | `"relay on"` | Turn power relay on |
-| `reset` | `"RESET"` | Reset accumulated kWh to 0 |
-| `deleteIndexRecord` | `"del:rec"` | Delete specific error record |
-| `deleteAllRecord` | `"del:recA"` | Delete all error history |
-| `setTime` | `"set:t"` | Sync device clock to phone |
-| `backLight` | `"set:blX"` | Set LED brightness (0-4) |
-| `powerOnTime` | `"power on time:" + 5 bytes` | Request last power-on date/time |
-
-The integration currently writes the bare ASCII string to characteristic `0x1003` with write-with-response; the device accepts the write but does not act on it.
+The ASCII acknowledgments are shorter than a 20-byte data chunk. The integration recognises them by prefix and keeps them out of the 40-byte packet buffer so they do not misalign data parsing.
 
 ### Decoding Example (Python)
 
@@ -442,7 +437,7 @@ def decode_v2_packet(data: bytes) -> dict:
 
 | Item | Status |
 |------|--------|
-| **Command wire format** | **Unknown.** ASCII strings like `relayOn`, `reset`, `setTime`, `backLight`, `deleteAllRecord` are confirmed from the Android app, but the exact on-the-wire framing is not. Every combination tested so far (write-with/without-response to characteristics `0xfff5`, `0x1003`, `0x1005`, with and without `\r\n`) is accepted at the GATT layer but produces no visible effect on the device. The next step is to capture a live HCI trace from the official `powerwatchdog2` app while pressing a command button. |
+| **Command wire format** | **Known (from the official Android app), partly tested.** Commands are raw ASCII written to `0xFFF5`, but the wire strings differ from the app's enum names (e.g. `relayOn` -> `RELAY ON`, `reset` -> `RESEt`). See [V1 Commands](#v1-commands-app---device). `RELAY ON` (restart after trip) is implemented and tested on hardware; the other commands are documented but not yet wired up or tested. |
 | Chunk 2 bytes 20-30 (11 bytes) | Not parsed. Not parsed by the TechBlueprints reference either. Likely firmware-internal state. |
 | Chunk 2 bytes 35-36 (2 bytes) | Not parsed, purpose unclear — sit between frequency and the line ID. |
 

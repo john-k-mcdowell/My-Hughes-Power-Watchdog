@@ -37,7 +37,7 @@ DATA_COLLECTION_TIMEOUT = 3  # seconds - wait for device to send data chunks
 # Source: https://github.com/spbrogan/esphome/tree/PolledSensor/esphome/components/hughes_power_watchdog
 V1_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
 V1_CHARACTERISTIC_UUID_TX = "0000ffe2-0000-1000-8000-00805f9b34fb"  # Device transmits data
-V1_CHARACTERISTIC_UUID_RX = "0000fff5-0000-1000-8000-00805f9b34fb"  # General write (unused)
+V1_CHARACTERISTIC_UUID_RX = "0000fff5-0000-1000-8000-00805f9b34fb"  # Command write (official app)
 V1_CHARACTERISTIC_UUID_CMD = "00001003-0000-1000-8000-00805f9b34fb"  # Device receives commands
 
 # Backward-compatible aliases
@@ -167,6 +167,27 @@ V1_CMD_DELETE_ALL_RECORDS = "deleteAllRecord"
 V1_CMD_SET_TIME = "setTime"
 V1_CMD_BACKLIGHT = "backLight"
 
+# V1 restart after trip (the "relay on" button the official Gen 1 app shows
+# on its E3/E4/E8 alert). Raw ASCII written to V1_CHARACTERISTIC_UUID_RX
+# (0xFFF5) with no header, checksum or terminator; the device answers with
+# the ASCII string "relay on" on the 0xFFE2 notify characteristic.
+V1_TRIP_RESTART_PAYLOAD = b"RELAY ON"
+V1_TRIP_RESTART_REPLY = b"relay on"
+# Error codes for which the official app offers the restart:
+# 3 = Line 1 over-current, 4 = Line 2 over-current, 8 = neutral missing
+V1_TRIP_RESTART_ERROR_CODES = (3, 4, 8)
+
+# Short ASCII acknowledgments a V1 device sends on 0xFFE2 after a command.
+# These are not 20-byte data chunks and must be kept out of the packet buffer.
+V1_COMMAND_REPLY_PREFIXES = (
+    b"relay on",
+    b"RESET",
+    b"del:rec",
+    b"set:t",
+    b"set:bl",
+    b"power on time:",
+)
+
 # V1 Backlight range
 V1_BACKLIGHT_MAX = 4
 
@@ -233,6 +254,7 @@ SWITCH_NEUTRAL_DETECTION_CONTROL = "neutral_detection_control"
 # Button keys
 BUTTON_ENERGY_RESET = "energy_reset"
 BUTTON_ERROR_DELETE = "error_delete"
+BUTTON_TRIP_RESTART = "trip_restart"
 
 # Light keys
 LIGHT_BACKLIGHT = "backlight"
