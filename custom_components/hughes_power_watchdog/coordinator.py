@@ -6,8 +6,9 @@ import asyncio
 import logging
 import struct
 import time
-from datetime import timedelta
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import datetime, timedelta
+from typing import Any
 
 from bleak import BleakClient
 from bleak.exc import BleakError
@@ -15,7 +16,6 @@ from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo
@@ -217,6 +217,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER,
             name=f"{DOMAIN}_{self.address}",
             update_interval=timedelta(seconds=CONNECTION_CHECK_INTERVAL),
+            config_entry=config_entry,
         )
 
         # Data buffers
@@ -849,8 +850,6 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             True on success, False on failure.
         """
         if self._is_v2_protocol:
-            from datetime import datetime
-
             now = datetime.now()
             payload = bytes([
                 now.year - 2000,

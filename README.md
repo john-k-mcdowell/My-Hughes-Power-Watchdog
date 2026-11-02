@@ -189,7 +189,7 @@ Debug logs include your device's raw BLE packet bytes but no personal informatio
 
 ## Requirements
 
-- Home Assistant 2023.11.0 or newer
+- Home Assistant 2024.11.0 or newer
 - Bluetooth adapter/proxy in range of your Hughes Power Watchdog
 - Hughes Power Watchdog with Bluetooth (Gen 1 or Gen 2)
 

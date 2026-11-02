@@ -65,8 +65,6 @@ def _coordinator(
     entry.add_to_hass(hass)
     with patch.object(HughesPowerWatchdogCoordinator, "_start_background_tasks"):
         coordinator = HughesPowerWatchdogCoordinator(hass, entry)
-    # Outside of entry setup DataUpdateCoordinator resets config_entry to None
-    coordinator.config_entry = entry
     coordinator._record_v1_error_code(error_code)
     client = _client(
         ["write", "write-without-response"] if properties is None else properties

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
@@ -71,8 +72,6 @@ class HughesPowerWatchdogMonitoringSwitch(
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on - enable monitoring."""
-        from datetime import timedelta
-
         # Resume connection watchdog
         self.coordinator.update_interval = timedelta(seconds=CONNECTION_CHECK_INTERVAL)
 
