@@ -13,7 +13,7 @@ custom_components/hughes_power_watchdog/
   __init__.py        - Integration setup and teardown
   binary_sensor.py   - Binary sensor entities (boost, neutral fault)
   brand/             - Device icons and logos (icon.png, icon@2x.png, logo.png, logo@2x.png) for HA UI
-  button.py          - Button entities (energy reset, error delete)
+  button.py          - Button entities (energy reset, error delete, V1 restart after trip)
   config_flow.py     - HA config flow for device discovery/setup
   const.py           - Constants, byte positions, sensor keys, command IDs, error codes
   coordinator.py     - BLE data coordinator (connection, parsing, commands, push updates)
@@ -38,7 +38,7 @@ All constants organized by section:
 - **V1 protocol** - Service/characteristic UUIDs, byte positions for 40-byte data packets, frequency field (bytes 31-34), ASCII command strings (relayOn, reset, setTime, backLight, deleteAllRecord)
 - **V2 protocol** - Service/characteristic UUID, framing constants ($yw@ header, q! tail), protocol version, sequence max, command IDs (0x01-0x0D), message types, byte positions for all single-block fields (bytes 9-42), dual-block Line 2 fields (bytes 43-76), relay/neutral command payload values, ResultRes success code. Byte 34/68 is the neutral-monitoring enable/bypass setting (not a fault flag). Byte 42 is relay status on single-block (30A) packets, but a block/line identifier (not relay status) on dual-block (50A) packets, as is byte 76 — see issue #14.
 - **Sensor keys** - String identifiers for all sensor types including backlight
-- **Entity keys** - Switch (monitoring, relay, neutral detection control), button (energy reset, error delete), light (backlight)
+- **Entity keys** - Switch (monitoring, relay, neutral detection control), button (energy reset, error delete, trip restart), light (backlight)
 - **Error codes** - E1-E9, F1-F2 mapping dict
 - **Backlight ranges** - V1 max=4, V2 max=5
 
@@ -69,7 +69,8 @@ Key methods:
 - `_next_sequence()` - V2 sequence number (1-100 cycling)
 - `_build_v2_command()` - Constructs $yw@ framed command packet
 - `_send_v2_command()` - Sends V2 command, optionally waits for ResultRes ack (5s timeout)
-- `_send_v1_command()` - Writes ASCII command to V1 command characteristic `0x1003` (write-with-response). Wire format still under investigation — writes currently succeed but the device ignores them, so V1 command entities are not exposed.
+- `_send_v1_command()` - Writes ASCII command to V1 command characteristic `0x1003` (write-with-response). Legacy path: it sends the app's enum names rather than the real wire strings, so the device ignores them and these V1 command entities are not exposed (see `docs/protocol.md`).
+- `async_restart_after_trip()` - V1 only. Writes the raw ASCII `RELAY ON` to `0xFFF5` (found via `_find_v1_write_characteristic()`), only while monitoring is on and the device reports E3/E4/E8. The device's `relay on` acknowledgment arrives on `0xFFE2`; `_notification_handler_v1()` records short ASCII command replies separately from the 40-byte data buffer.
 
 Key properties:
 - `is_v2_protocol` - True for V2 devices (WD_V5/E5/V6/E6)
@@ -103,9 +104,10 @@ HA binary sensor entities (V2 protocol only):
 - `HughesPowerWatchdogBoostModeSensor` - Autoformer boost active/inactive. Only created for booster models (`coordinator.has_booster` → V8/V9/E8/E9).
 
 ### `button.py`
-HA button entities (**V2 only** — V1 command support is work-in-progress):
-- `HughesPowerWatchdogEnergyResetButton` - Resets cumulative kWh counter to zero
-- `HughesPowerWatchdogErrorDeleteButton` - Deletes all stored error records from device
+HA button entities. V2 only, except the V1 restart button (other V1 command support is work-in-progress):
+- `HughesPowerWatchdogEnergyResetButton` - Resets cumulative kWh counter to zero (V2)
+- `HughesPowerWatchdogErrorDeleteButton` - Deletes all stored error records from device (V2)
+- `HughesPowerWatchdogTripRestartButton` - Restarts power after an E3/E4/E8 trip (**V1 only**). Raises an error in the UI if no such trip is active or the write fails. Attributes: `last_sent`, `last_reply`, `last_reply_time`
 
 ### `light.py`
 HA light entity with brightness control (**V2 only** — V1 command support is work-in-progress):

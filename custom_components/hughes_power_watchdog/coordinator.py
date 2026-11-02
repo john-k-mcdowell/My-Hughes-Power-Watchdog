@@ -37,6 +37,7 @@ from .const import (
     BYTE_VOLTAGE_END,
     BYTE_VOLTAGE_START,
     CHARACTERISTIC_UUID_TX,
+    CHUNK_SIZE,
     HEADER_BYTES,
     LINE_1_ID,
     LINE_2_ID,
@@ -44,11 +45,16 @@ from .const import (
     V1_BYTE_FREQUENCY_START,
     V1_BYTE_FREQUENCY_END,
     V1_CHARACTERISTIC_UUID_CMD,
+    V1_CHARACTERISTIC_UUID_RX,
     V1_CMD_BACKLIGHT,
     V1_CMD_DELETE_ALL_RECORDS,
     V1_CMD_ENERGY_RESET,
     V1_CMD_RELAY_ON,
     V1_CMD_SET_TIME,
+    V1_COMMAND_REPLY_PREFIXES,
+    V1_TRIP_RESTART_ERROR_CODES,
+    V1_TRIP_RESTART_PAYLOAD,
+    V1_TRIP_RESTART_REPLY,
     # V2 protocol constants
     DEVICE_NAME_PREFIXES_V2,
     V2_SERVICE_UUID,
@@ -243,6 +249,11 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Clock sync tracking (auto-sync once per connection session)
         self._time_synced: bool = False
 
+        # V1 restart-after-trip tracking (last command sent, last ASCII reply)
+        self._last_trip_restart_sent: float | None = None
+        self._last_command_reply: str | None = None
+        self._last_command_reply_time: float | None = None
+
         # Backlight level (read from V2 data stream, or last-set value for V1)
         self._backlight: int | None = None
 
@@ -372,6 +383,23 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def is_v2_protocol(self) -> bool:
         """Return True if device uses the V2 protocol."""
         return self._is_v2_protocol
+
+    @property
+    def error_code(self) -> int:
+        """Return the last error code reported by the device."""
+        return self._error_code
+
+    @property
+    def trip_restart_info(self) -> dict[str, Any]:
+        """Return the last V1 restart-after-trip command and device reply.
+
+        Times are Unix timestamps (seconds), or None if not yet seen.
+        """
+        return {
+            "last_sent": self._last_trip_restart_sent,
+            "last_reply": self._last_command_reply,
+            "last_reply_time": self._last_command_reply_time,
+        }
 
     @property
     def is_dual_line(self) -> bool:
@@ -879,6 +907,102 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return await self._send_v2_command(V2_CMD_ERROR_DEL, payload)
         return False
 
+    @staticmethod
+    def _find_v1_write_characteristic(client: BleakClient) -> Any | None:
+        """Return the V1 command write characteristic (0xFFF5), or None.
+
+        Matches the official Gen 1 app: the first 0xFFF5 characteristic in a
+        vendor service whose 16-bit UUID starts with 'F' (0000Fxxx). Looking it
+        up by service avoids ambiguity if the UUID appears more than once.
+        """
+        for service in client.services:
+            if str(service.uuid).lower()[4:5] != "f":
+                continue
+            for char in service.characteristics:
+                if str(char.uuid).lower() == V1_CHARACTERISTIC_UUID_RX:
+                    return char
+        return None
+
+    async def async_restart_after_trip(self) -> bool:
+        """Restore power after an over-current or missing-neutral trip (V1).
+
+        Sends the same command as the restart button in the official Gen 1
+        app: the raw ASCII string "RELAY ON" written to 0xFFF5. The device
+        acknowledges with "relay on" on 0xFFE2 (see _notification_handler_v1).
+
+        Only sent on V1 devices, while monitoring is enabled, and while the
+        device reports error E3, E4 or E8, the same errors for which the
+        official app offers the restart.
+
+        Returns:
+            True if the BLE write succeeded, False if refused or failed.
+        """
+        if self._is_v2_protocol:
+            _LOGGER.warning(
+                "[%s] Restart after trip is only implemented for V1 devices",
+                self.device_name,
+            )
+            return False
+        if not self._monitoring_enabled:
+            _LOGGER.warning(
+                "[%s] V1: Restart after trip refused, monitoring is off",
+                self.device_name,
+            )
+            return False
+        if self._error_code not in V1_TRIP_RESTART_ERROR_CODES:
+            _LOGGER.warning(
+                "[%s] V1: Restart after trip refused, error code is %d "
+                "(only sent for E3/E4/E8)",
+                self.device_name,
+                self._error_code,
+            )
+            return False
+
+        try:
+            client = await self._ensure_connected()
+            char = self._find_v1_write_characteristic(client)
+            if char is None:
+                _LOGGER.error(
+                    "[%s] V1: Restart after trip failed, characteristic %s not found",
+                    self.device_name,
+                    V1_CHARACTERISTIC_UUID_RX,
+                )
+                return False
+
+            # Android's default write type: without response when supported
+            props = [prop.lower() for prop in char.properties]
+            if "write-without-response" in props:
+                response = False
+            elif "write" in props:
+                response = True
+            else:
+                _LOGGER.error(
+                    "[%s] V1: Restart after trip failed, %s is not writable (%s)",
+                    self.device_name,
+                    V1_CHARACTERISTIC_UUID_RX,
+                    props,
+                )
+                return False
+
+            await client.write_gatt_char(
+                char, V1_TRIP_RESTART_PAYLOAD, response=response
+            )
+            self._last_trip_restart_sent = time.time()
+            _LOGGER.info(
+                "[%s] V1: Sent restart after trip (error code %d, response=%s)",
+                self.device_name,
+                self._error_code,
+                response,
+            )
+            return True
+        except (BleakError, UpdateFailed) as err:
+            _LOGGER.error(
+                "[%s] V1: Failed to send restart after trip: %s",
+                self.device_name,
+                err,
+            )
+            return False
+
     async def _request_device_status(self) -> None:
         """Request current status from device.
 
@@ -1086,6 +1210,23 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Check if this is a V1 error record (starts with 'Er' = 0x45 0x72)
         if len(data) >= 2 and data[0:2] == b'\x45\x72':
             self._parse_error_packet_v1(bytes(data))
+            self.async_set_updated_data(self._build_data_dict())
+            return
+
+        # Short ASCII command acknowledgments (e.g. "relay on") are not data
+        # chunks; appending them would misalign the 40-byte packet buffer.
+        if len(data) < CHUNK_SIZE and bytes(data).startswith(
+            V1_COMMAND_REPLY_PREFIXES
+        ):
+            reply = bytes(data).decode("ascii", errors="replace")
+            self._last_command_reply = reply
+            self._last_command_reply_time = now
+            _LOGGER.info("[%s] V1: Command reply: %r", self.device_name, reply)
+            if bytes(data) == V1_TRIP_RESTART_REPLY:
+                _LOGGER.info(
+                    "[%s] V1: Device confirmed restart after trip",
+                    self.device_name,
+                )
             self.async_set_updated_data(self._build_data_dict())
             return
 
