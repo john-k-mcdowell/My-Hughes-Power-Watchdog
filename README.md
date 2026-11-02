@@ -228,14 +228,16 @@ Based on the original ESPHome implementation by:
 
 V1/V2 protocol documentation reverse-engineered from the Android app source by:
 - [gearhead765](https://github.com/gearhead765)
+- [bmcgair](https://github.com/bmcgair) — Gen 1 (V1) command wire strings and acknowledgments (see [docs/protocol.md](docs/protocol.md))
 
 Additional protocol details cross-referenced against the independent [TechBlueprints/dbus-power-watchdog](https://github.com/TechBlueprints/dbus-power-watchdog) Venus OS D-Bus service, which clarified the booster-model gating for V2 output voltage, temperature, and boost mode. See [docs/protocol.md](docs/protocol.md) for details.
 
 ### Contributors
 - [IAmTheMitchell](https://github.com/IAmTheMitchell) — Gen 2 WD_E5 device support, V2 50A Line 2 sensor fix, protocol documentation for dual-block packet format
 - [gearhead765](https://github.com/gearhead765) — Error Log feature and testing (v0.9.0)
+- [bmcgair](https://github.com/bmcgair) — Gen 1 (V1) command wire format reverse-engineered from the official app, the Restart After Trip button (v0.11.0), and the project's first automated tests
 - [brianfinley](https://github.com/brianfinley) — WD_V7 (PWD30EPOHW) device support and hardware testing (v0.10.2)
-- [snoack](https://github.com/snoack) — Resubscribe after dropped BLE connections, remembering dual-line (50A) devices to fix missing Line 2 sensors, and fixing energy total drops (v0.10.3); 50A relay-state capture (#17)
+- [snoack](https://github.com/snoack) — Resubscribe after dropped BLE connections, remembering dual-line (50A) devices to fix missing Line 2 sensors, and fixing energy total drops (v0.10.3), per-line energy sensors (v0.11.0), and the 50A relay-state capture (#17)
 
 ## License
 
