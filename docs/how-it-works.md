@@ -180,6 +180,13 @@ V1 command wire format is unresolved — writes are accepted by the device but s
 | Neutral detection | N/A | NeutralDetection 0x0D | Switch (V2 only) |
 | Delete errors | `deleteAllRecord` | ErrorDel 0x05 (0xFF=all) | Button (V2 only) |
 
+## Tests
+
+`tests/` holds the pytest suite (run with `pytest`; settings in `pytest.ini`, pinned dependencies in `requirements_test.txt`, which uses `pytest-homeassistant-custom-component`). Requires Python 3.13. Locally: `uv venv --python 3.13 .venv`, `uv pip install --prerelease=allow --python .venv/bin/python -r requirements_test.txt` (Home Assistant pins an exact pre-release of one dependency), then `.venv/bin/python -m pytest`. The `Tests` GitHub Action (`.github/workflows/tests.yml`) runs it on pushes and pull requests to `main` and `development`; it is separate from the `Validate` workflow (Hassfest and HACS).
+
+- `conftest.py` - enables custom integrations and shuts down any coordinators a test built, before Home Assistant closes its event loop
+- `test_trip_restart.py` - V1 Restart After Trip: command gating (E3/E4/E8 only, V1 only, monitoring on), 50A trip latch, write-type selection, ack handling that keeps replies out of the data buffer, and the button
+
 ## Version History
 
 See the [GitHub releases page](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/releases) for the full version history and per-release notes.

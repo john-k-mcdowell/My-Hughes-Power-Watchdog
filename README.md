@@ -206,6 +206,18 @@ Debug logs include your device's raw BLE packet bytes but no personal informatio
 - Toggle the Monitoring Switch off and on
 - Restart the integration
 
+## Development
+
+Unit tests live in `tests/` and run with `pytest`. Using [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv venv --python 3.13 .venv
+uv pip install --prerelease=allow --python .venv/bin/python -r requirements_test.txt
+.venv/bin/python -m pytest
+```
+
+The `Tests` GitHub Action runs the same suite on pushes and pull requests to `main` and `development`.
+
 ## Credits
 
 Based on the original ESPHome implementation by:
