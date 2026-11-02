@@ -105,8 +105,8 @@ HA binary sensor entities (V2 protocol only):
 
 ### `button.py`
 HA button entities. V2 only, except the V1 restart button (other V1 command support is work-in-progress):
-- `HughesPowerWatchdogEnergyResetButton` - Resets cumulative kWh counter to zero (V2)
-- `HughesPowerWatchdogErrorDeleteButton` - Deletes all stored error records from device (V2)
+- `HughesPowerWatchdogEnergyResetButton` - Resets cumulative kWh counter to zero (V2). Raises an error in the UI if the command fails
+- `HughesPowerWatchdogErrorDeleteButton` - Deletes all stored error records from device (V2). Raises an error in the UI if the command fails
 - `HughesPowerWatchdogTripRestartButton` - Restarts power after an E3/E4/E8 trip (**V1 only**). Raises an error in the UI if no such trip is active or the write fails. Attributes: `last_sent`, `last_reply`, `last_reply_time`
 
 ### `light.py`
@@ -185,7 +185,10 @@ V1 command wire format is unresolved — writes are accepted by the device but s
 `tests/` holds the pytest suite (run with `pytest`; settings in `pytest.ini`, pinned dependencies in `requirements_test.txt`, which uses `pytest-homeassistant-custom-component`). Requires Python 3.13. Locally: `uv venv --python 3.13 .venv`, `uv pip install --prerelease=allow --python .venv/bin/python -r requirements_test.txt` (Home Assistant pins an exact pre-release of one dependency), then `.venv/bin/python -m pytest`. The `Tests` GitHub Action (`.github/workflows/tests.yml`) runs it on pushes and pull requests to `main` and `development`; it is separate from the `Validate` workflow (Hassfest and HACS).
 
 - `conftest.py` - enables custom integrations and shuts down any coordinators a test built, before Home Assistant closes its event loop
-- `test_trip_restart.py` - V1 Restart After Trip: command gating (E3/E4/E8 only, V1 only, monitoring on), 50A trip latch, write-type selection, ack handling that keeps replies out of the data buffer, and the button
+- `packets.py` - Packet builders and the real WD_E7 50A packets captured in issue #17
+- `test_trip_restart.py` - V1 Restart After Trip: command gating (E3/E4/E8 only, V1 only, monitoring on), 50A trip latch, characteristic lookup and failure paths, write-type selection, ack handling that keeps replies out of the data buffer, the buttons (identity, availability, failures) and button platform setup
+- `test_dual_line_energy.py` - 50A detection and persistence, per-line and total energy (V1 and V2), invalid Line 2 handling, energy reset
+- `test_session_state.py` - Init/subscription state reset on new connections and disconnects
 
 ## Version History
 

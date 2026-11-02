@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from bleak import BleakClient
+from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection
 
@@ -926,7 +927,9 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return False
 
     @staticmethod
-    def _find_v1_write_characteristic(client: BleakClient) -> Any | None:
+    def _find_v1_write_characteristic(
+        client: BleakClient,
+    ) -> BleakGATTCharacteristic | None:
         """Return the V1 command write characteristic (0xFFF5), or None.
 
         Matches the official Gen 1 app: the first 0xFFF5 characteristic in a
@@ -1888,18 +1891,16 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Assistant record a meter reset and count the whole total again.
             total_energy = self._line_1_data.get("energy")
             if self._is_dual_line:
+                # Per-line energy counters (50A devices only). Line 2 uses the
+                # last known value for the same reason as the total.
+                data[SENSOR_ENERGY_L1] = total_energy
+                if self._line_2_energy is not None:
+                    data[SENSOR_ENERGY_L2] = self._line_2_energy
                 if total_energy is None or self._line_2_energy is None:
                     total_energy = None
                 else:
                     total_energy += self._line_2_energy
             data[SENSOR_TOTAL_POWER] = total_energy
-
-            # Per-line energy counters (50A devices only). Line 2 uses the
-            # last known value for the same reason as the total above.
-            if self._is_dual_line:
-                data[SENSOR_ENERGY_L1] = self._line_1_data.get("energy")
-                if self._line_2_energy is not None:
-                    data[SENSOR_ENERGY_L2] = self._line_2_energy
 
         # Line 2 data (50A dual-line units only)
         if self._line_2_data:

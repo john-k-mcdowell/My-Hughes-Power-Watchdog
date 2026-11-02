@@ -78,7 +78,10 @@ class HughesPowerWatchdogEnergyResetButton(
 
     async def async_press(self) -> None:
         """Handle the button press."""
-        await self.coordinator.async_reset_energy()
+        if not await self.coordinator.async_reset_energy():
+            raise HomeAssistantError(
+                "Failed to reset the energy counter on the Power Watchdog"
+            )
 
 
 class HughesPowerWatchdogErrorDeleteButton(
@@ -112,7 +115,10 @@ class HughesPowerWatchdogErrorDeleteButton(
 
     async def async_press(self) -> None:
         """Handle the button press."""
-        await self.coordinator.async_delete_errors()
+        if not await self.coordinator.async_delete_errors():
+            raise HomeAssistantError(
+                "Failed to clear the error history on the Power Watchdog"
+            )
 
 
 def _timestamp_to_iso(timestamp: float | None) -> str | None:

@@ -14,6 +14,8 @@ from bleak.exc import BleakError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.hughes_power_watchdog.button import (
+    HughesPowerWatchdogEnergyResetButton,
+    HughesPowerWatchdogErrorDeleteButton,
     HughesPowerWatchdogTripRestartButton,
     async_setup_entry as button_setup_entry,
 )
@@ -361,3 +363,20 @@ async def test_platform_adds_trip_button_only_on_v1(
     await button_setup_entry(hass, v2.config_entry, lambda ents: added_v2.extend(ents))
     assert added_v2
     assert not any(isinstance(e, HughesPowerWatchdogTripRestartButton) for e in added_v2)
+
+
+async def test_other_buttons_raise_on_failure(coordinator_factory) -> None:
+    """Energy reset and error delete report a failed command to the user."""
+    coordinator, _ = coordinator_factory(name="WD_V5_000000000000")
+    coordinator.async_reset_energy = AsyncMock(return_value=False)
+    coordinator.async_delete_errors = AsyncMock(return_value=False)
+
+    with pytest.raises(HomeAssistantError):
+        await HughesPowerWatchdogEnergyResetButton(coordinator).async_press()
+    with pytest.raises(HomeAssistantError):
+        await HughesPowerWatchdogErrorDeleteButton(coordinator).async_press()
+
+    coordinator.async_reset_energy.return_value = True
+    coordinator.async_delete_errors.return_value = True
+    await HughesPowerWatchdogEnergyResetButton(coordinator).async_press()
+    await HughesPowerWatchdogErrorDeleteButton(coordinator).async_press()
