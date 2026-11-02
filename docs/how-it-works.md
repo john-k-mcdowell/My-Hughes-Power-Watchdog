@@ -63,7 +63,7 @@ Key methods:
 - `_parse_data_packet_v2()` - V2 variable-length packet parser, with ResultRes ack detection
 - `_parse_v2_extended_fields(data, is_dual_block)` - Extracts bytes 25-42 (power factor, output voltage [booster models only], freq, temp, error, boost, neutral monitoring setting, backlight). Byte 42 is relay status when `is_dual_block` is False (30A packets), or ignored (block/line ID, not relay state) when True (50A packets)
 - `_decode_v2_dual_block_line2()` - Extracts Line 2 from dual-block 50A packets, stores L2 frequency and L2 power factor
-- `_build_data_dict()` - Assembles final sensor data dict; Line 2 keys only included when dual-line. On dual-line devices the cumulative energy total is L1 + the last known L2 energy (`_line_2_energy`), and is withheld (`None`) until L2 energy is known, so a packet with invalid L2 data cannot make the total drop and be counted as a meter reset by HA
+- `_build_data_dict()` - Assembles final sensor data dict; Line 2 keys only included when dual-line. On dual-line devices the cumulative energy total is L1 + the last known L2 energy (`_line_2_energy`), and is withheld (`None`) until L2 energy is known, so a packet with invalid L2 data cannot make the total drop and be counted as a meter reset by HA. The per-line energy keys (`energy_line_1`, `energy_line_2`) are only included on dual-line devices, with Line 2 also taken from `_line_2_energy`
 - `_reset_session_state()` - Clears V2 init, notification-subscription and time-sync flags. Called on disconnect and whenever a new BLE connection is established, so a connection dropped by the device is re-initialized immediately
 - `_set_dual_line()` - Marks the device as dual-line (50A) the first time Line 2 data is seen (V1 Line 2 packet or V2 dual-block packet) and persists it in the config entry (`CONF_DUAL_LINE`)
 - `_next_sequence()` - V2 sequence number (1-100 cycling)
@@ -81,7 +81,7 @@ HA sensor entities:
 - `HughesPowerWatchdogVoltageSensor` - Voltage (per-line)
 - `HughesPowerWatchdogCurrentSensor` - Current (per-line)
 - `HughesPowerWatchdogPowerSensor` - Power (per-line + combined)
-- `HughesPowerWatchdogEnergySensor` - Cumulative kWh
+- `HughesPowerWatchdogEnergySensor` - Cumulative kWh (total, and per-line on 50A devices)
 - `HughesPowerWatchdogErrorCodeSensor` - Error code number
 - `HughesPowerWatchdogErrorTextSensor` - Error description text
 - `HughesPowerWatchdogFrequencySensor` - AC frequency (Hz)
@@ -92,7 +92,7 @@ HA sensor entities:
 
 Sensor creation is gated by device capabilities:
 - **All devices**: Line 1 V/I/P, energy, error code/text, frequency
-- **Dual-line (50A) devices** (`coordinator.is_dual_line`): Line 2 V/I/P, combined power, frequency Line 2. If the device is not yet known to be dual-line at setup (very first connection), a coordinator listener adds these sensors once the first Line 2 data arrives
+- **Dual-line (50A) devices** (`coordinator.is_dual_line`): Line 2 V/I/P, combined power, energy Line 1 and Line 2, frequency Line 2. If the device is not yet known to be dual-line at setup (very first connection), a coordinator listener adds these sensors once the first Line 2 data arrives
 - **V2 booster devices only** (`coordinator.is_v2_protocol and coordinator.has_booster`): Output voltage, Temperature (V5/E5/V6/E6 have no real values for these — output voltage mirrors the energy counter and temperature reads zero)
 - **V2 devices only** (`coordinator.is_v2_protocol`): Power factor Line 1, and Line 2 when dual-line
 

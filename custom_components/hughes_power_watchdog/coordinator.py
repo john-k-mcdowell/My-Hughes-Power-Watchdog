@@ -134,6 +134,8 @@ from .const import (
     SENSOR_COMBINED_POWER,
     SENSOR_CURRENT_L1,
     SENSOR_CURRENT_L2,
+    SENSOR_ENERGY_L1,
+    SENSOR_ENERGY_L2,
     SENSOR_ERROR_CODE,
     SENSOR_ERROR_TEXT,
     SENSOR_POWER_L1,
@@ -1727,6 +1729,13 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 else:
                     total_energy += self._line_2_energy
             data[SENSOR_TOTAL_POWER] = total_energy
+
+            # Per-line energy counters (50A devices only). Line 2 uses the
+            # last known value for the same reason as the total above.
+            if self._is_dual_line:
+                data[SENSOR_ENERGY_L1] = self._line_1_data.get("energy")
+                if self._line_2_energy is not None:
+                    data[SENSOR_ENERGY_L2] = self._line_2_energy
 
         # Line 2 data (50A dual-line units only)
         if self._line_2_data:

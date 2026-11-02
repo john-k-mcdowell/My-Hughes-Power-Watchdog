@@ -75,6 +75,7 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 - **Line 2 Current** (amps)
 - **Line 2 Power** (watts)
 - **Total Combined Power** (L1 + L2, watts)
+- **Energy Line 1** / **Energy Line 2** (kWh) - The device's per-line energy counters. Unlike integrating the power sensors in Home Assistant, they include usage while the device was disconnected from Home Assistant
 - **Frequency Line 2** (Hz) - AC power line frequency for Line 2 (Gen 2 V2 only)
 
 ### Device Controls (v0.8.0)

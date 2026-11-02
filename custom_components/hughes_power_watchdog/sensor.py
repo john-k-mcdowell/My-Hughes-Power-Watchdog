@@ -27,6 +27,8 @@ from .const import (
     SENSOR_COMBINED_POWER,
     SENSOR_CURRENT_L1,
     SENSOR_CURRENT_L2,
+    SENSOR_ENERGY_L1,
+    SENSOR_ENERGY_L2,
     SENSOR_ERROR_CODE,
     SENSOR_ERROR_TEXT,
     SENSOR_FREQUENCY,
@@ -109,6 +111,8 @@ def _line_2_sensors(
         HughesPowerWatchdogCurrentSensor(coordinator, SENSOR_CURRENT_L2, "Line 2"),
         HughesPowerWatchdogPowerSensor(coordinator, SENSOR_POWER_L2, "Line 2"),
         HughesPowerWatchdogPowerSensor(coordinator, SENSOR_COMBINED_POWER, "Combined"),
+        HughesPowerWatchdogEnergySensor(coordinator, SENSOR_ENERGY_L1, "Energy Line 1"),
+        HughesPowerWatchdogEnergySensor(coordinator, SENSOR_ENERGY_L2, "Energy Line 2"),
         HughesPowerWatchdogFrequencyLineSensor(coordinator, SENSOR_FREQUENCY_L2, "Line 2"),
     ]
     # Power factor (V2 only - not present in the V1 protocol)
@@ -214,10 +218,15 @@ class HughesPowerWatchdogEnergySensor(HughesPowerWatchdogSensor):
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_display_precision = 1
 
-    def __init__(self, coordinator: HughesPowerWatchdogCoordinator) -> None:
+    def __init__(
+        self,
+        coordinator: HughesPowerWatchdogCoordinator,
+        sensor_type: str = SENSOR_TOTAL_POWER,
+        name: str = "Cumulative Power Usage",
+    ) -> None:
         """Initialize energy sensor."""
-        super().__init__(coordinator, SENSOR_TOTAL_POWER)
-        self._attr_name = "Cumulative Power Usage"
+        super().__init__(coordinator, sensor_type)
+        self._attr_name = name
 
     @property
     def native_value(self) -> float | None:
