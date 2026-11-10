@@ -118,10 +118,9 @@ class HughesPowerWatchdogRelaySwitch(
     def is_on(self) -> bool | None:
         """Return True if relay is on (power flowing), if known.
 
-        V2: byte 42/76 is relay status (0x00=ON) on single-block (30A)
-        packets, but a block/line identifier - not relay state - on
-        dual-block (50A) packets, so state is unknown there until a
-        correct byte is identified. See issue #14.
+        V2: byte 42 is relay status (0x00=ON) on single-block (30A)
+        packets. On dual-block (50A) packets bit 0x10 of byte 42 is set
+        while the relay is open (experimental, issues #17/#26).
         V1: no relay status reported, assume on unless error.
         """
         if self.coordinator.is_v2_protocol:

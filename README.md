@@ -67,7 +67,7 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 > These three sensors are only created for V8/V9/E8/E9 models and have **not yet been validated** on hardware. Please report results via [GitHub issues](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues).
 
 **Gen 2 (V2) Models Only:**
-- **Relay Status** - Whether the power relay is ON or tripped (binary sensor). Only reported on 30A (single-line) devices — unavailable on 50A (dual-line) devices, see note below.
+- **Relay Status** - Whether the power relay is ON or tripped (binary sensor). On 50A (dual-line) devices this is experimental: it reads the relay-open bit seen for a commanded open on a WD_E7 and WD_E5, and it is not yet known whether it also shows a trip or the power-up delay. See note below.
 - **Neutral Detection** - Whether a lost-neutral fault (error code 8) is currently reported (binary sensor)
 
 **50 Amp (Dual-Line) Units Only:**
@@ -93,7 +93,7 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 > **No Gen 1 backlight control (so far).** A Gen 1 50A device (BLE name `PMD…`) did not respond to the official app's backlight command in either form we tried (the level as an ASCII digit, and as a raw byte): no reply and no change. Its official iOS app has no backlight setting either, so that model most likely has no software-controllable backlight, and the integration no longer creates a Gen 1 Backlight light. The Gen 1 backlight code is kept, disabled by `V1_BACKLIGHT_ENTITY_ENABLED` in `const.py`. If your Gen 1 device's official app **does** have a backlight setting and you would like to help test it, please [open an issue](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/new) with your model name.
 
 **Gen 2 (V2) devices:**
-- **Power Relay** (switch) - Turn the power relay on/off. On 30A (single-line) devices the on/off indicator reflects real relay state. On 50A (dual-line) devices no protocol byte reliably reports live relay state, so the indicator shows as unknown — the commands themselves still work on both.
+- **Power Relay** (switch) - Turn the power relay on/off. On 30A (single-line) devices the on/off indicator reflects real relay state. On 50A (dual-line) devices the indicator is experimental (it follows the relay-open bit seen for a commanded open on a WD_E7 and WD_E5). The commands work on both.
 - **Backlight** (light with brightness) - Control the device LED brightness (levels 0-5; HA brightness 0-255 is mapped to the nearest discrete level).
 - **Reset Energy Counter** (button) - Reset the cumulative kWh counter to zero.
 - **Clear Error History** (button) - Delete all stored error records from the device.
@@ -176,9 +176,9 @@ Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth 
 - Device commands — relay, backlight, energy reset, error delete, clock sync - Working (v0.8.0)
 - Output Voltage, Temperature, Boost Mode (booster models V8/V9/E8/E9 only) - **Untested**
 - Neutral Detection Control switch - Working, reflects real device state (v0.10.0)
-- Relay Status / Power Relay on/off indicator - Working on 30A (single-line) devices; unknown on 50A (dual-line) devices since no confirmed relay-status byte exists for them (see [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14))
+- Relay Status / Power Relay on/off indicator - Working on 30A (single-line) devices; experimental on 50A (dual-line) devices, where a commanded open was confirmed on a WD_E7 and WD_E5 (see [issue #17](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/17) and [issue #26](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/26))
 
-> **Help wanted: Relay status on 50A (dual-line) devices.** We don't yet know which byte reports live relay state on 50A V2 devices (confirmed separately from 30A devices — see [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14)). It's also unconfirmed whether the Power Relay switch's on/off *command* actually toggles the relay on 50A devices — only the status *readback* has been tested, and that test is what's broken. If you have a **50A Gen 2 device** (dual-line, e.g. WD_E5/WD_E6/WD_V6/WD_E7), you can help by capturing two short debug-log samples — one with the relay closed and one with it open — and posting them to **[a new issue](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/new)**. See [Capturing Relay State Data (50A devices)](#capturing-relay-state-data-50a-devices) below for exact steps.
+> **Help wanted: Relay status on 50A (dual-line) devices (experimental).** Captures from a WD_E7 and a WD_E5 show bit `0x10` of byte 42 is set while the relay is open after a commanded open, and the integration now uses it. We still don't know whether it also covers an open you did not command (an over-current trip, or the power-up startup delay), or the behavior on other 50A models. If you have a **50A Gen 2 device** (dual-line, e.g. WD_E5/WD_E6/WD_V6/WD_E7), please post debug-log samples to **[issue #26](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/26)**. See [Capturing Relay State Data (50A devices)](#capturing-relay-state-data-50a-devices) below for exact steps.
 
 **If you have a Gen 2 device**, please help us by:
 1. Enabling debug logging (see below)
@@ -200,7 +200,7 @@ Then check your Home Assistant logs for entries prefixed with `[V2]` or `[V1]`.
 
 ### Capturing Relay State Data (50A Devices)
 
-If you have a 50A (dual-line) Gen 2 device, here's how to help us find the correct relay-status byte:
+If you have a 50A (dual-line) Gen 2 device, here's how to help confirm the experimental relay-status bit, especially for opens you did **not** command (a trip, or the power-up delay):
 
 1. Enable debug logging (see above) and restart Home Assistant.
 2. With the relay **closed** (power flowing normally), wait a few seconds, then open **Settings → System → Logs** (or your log file) and copy **5-10 consecutive lines** containing `V2: Complete packet` or `V2: Extended fields` for your device.

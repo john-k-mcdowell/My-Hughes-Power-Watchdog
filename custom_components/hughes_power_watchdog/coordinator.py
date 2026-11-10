@@ -128,6 +128,7 @@ from .const import (
     V2_DUAL_BLOCK_L2_LINE_ID,
     V2_DUAL_BLOCK_L2_POWER_FACTOR_START,
     V2_DUAL_BLOCK_L2_POWER_FACTOR_END,
+    V2_DUAL_BLOCK_RELAY_OPEN_BIT,
     # V1 protocol UUIDs
     LEGACY_SERVICE_UUID,
     # Shared constants
@@ -1679,11 +1680,9 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         These fields are confirmed by the Android app source code and, for
         power factor/neutral monitoring, by a packet capture reported in
         issue #14. Byte 42 is relay status (0x00=ON) on single-block (30A)
-        packets, confirmed working in 0.9.2 and reported broken in 0.10.0
-        by issue #14's gearhead765 comment, but on dual-block (50A) packets
-        that same byte position is a block/line identifier that never
-        changes with real relay state (confirmed on a WD_E5 by issue #14's
-        original report) - pass is_dual_block to select the right meaning.
+        packets. On dual-block (50A) packets the low bit is a block/line
+        identifier and bit 0x10 is set while the relay is open (experimental,
+        issues #17/#26) - pass is_dual_block to select the right meaning.
         """
         # Power factor (bytes 25-28, uint32 / 1000)
         pf_bytes = data[V2_BYTE_POWER_FACTOR_START:V2_BYTE_POWER_FACTOR_END]
@@ -1728,12 +1727,14 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         error_code = data[V2_BYTE_ERROR_CODE]
         self._error_code = error_code
 
-        # Byte 42: relay status on single-block (30A) packets, but a
-        # block/line identifier (not relay state) on dual-block (50A)
-        # packets - see issue #14.
+        # Byte 42: relay status on single-block (30A) packets (0x00=ON).
+        # On dual-block (50A) packets the low bit is the block/line ID and
+        # bit 0x10 is set while the relay is open (experimental: seen for a
+        # commanded open on a WD_E7 and WD_E5, issues #17/#26). Store only
+        # that bit so 0x00 still means ON for the entities.
         byte_42 = data[V2_BYTE_LINE_ID]
         if is_dual_block:
-            self._relay_status = None
+            self._relay_status = byte_42 & V2_DUAL_BLOCK_RELAY_OPEN_BIT
         else:
             self._relay_status = byte_42
 

@@ -189,3 +189,19 @@ async def test_v1_both_lines_in_one_notification(make_coordinator) -> None:
         0, bytearray(v1_packet(1, energy=100.0) + v1_packet(2, energy=50.0))
     )
     assert coordinator.data[SENSOR_TOTAL_POWER] == 150.0
+
+
+async def test_v2_dual_block_relay_state_from_open_bit(make_coordinator) -> None:
+    """On 50A packets bit 0x10 of byte 42 means the relay is open."""
+    from custom_components.hughes_power_watchdog.const import SENSOR_RELAY_STATUS
+
+    coordinator = make_coordinator("WD_E7_000000000000")
+
+    coordinator._notification_handler_v2(0, bytearray(V2_DUAL_CLOSED))
+    assert coordinator._build_data_dict()[SENSOR_RELAY_STATUS] == 0x00
+
+    coordinator._notification_handler_v2(0, bytearray(V2_DUAL_OPEN))
+    assert coordinator._build_data_dict()[SENSOR_RELAY_STATUS] == 0x10
+
+    coordinator._notification_handler_v2(0, bytearray(V2_DUAL_CLOSED))
+    assert coordinator._build_data_dict()[SENSOR_RELAY_STATUS] == 0x00

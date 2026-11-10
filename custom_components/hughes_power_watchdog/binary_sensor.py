@@ -80,10 +80,10 @@ class HughesPowerWatchdogRelayStatusSensor(HughesPowerWatchdogBinarySensor):
     """Relay status binary sensor (V2 only).
 
     Relay status byte: 0x00 = ON (power flowing), 0x01 or 0x02 = OFF/Error
-    (tripped). Only meaningful on single-block (30A) devices - on
-    dual-block (50A) devices this byte position is a block/line
-    identifier, not relay state, so the sensor reports unavailable there.
-    See issue #14.
+    (tripped). On single-block (30A) devices this is byte 42.
+    On dual-block (50A) devices only bit 0x10 of byte 42 is used (set while
+    the relay is open); this is experimental, seen for a commanded open on
+    a WD_E7 and WD_E5 (issues #17, #26). See issue #14.
     is_on = True means relay is ON (power flowing, normal operation).
     """
 

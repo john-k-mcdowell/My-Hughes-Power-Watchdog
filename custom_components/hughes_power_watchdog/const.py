@@ -118,7 +118,8 @@ V2_BYTE_TEMPERATURE = 36
 V2_BYTE_FREQUENCY_START = 37
 V2_BYTE_FREQUENCY_END = 41
 V2_BYTE_ERROR_CODE = 41
-V2_BYTE_LINE_ID = 42  # Relay status (0x00=ON) on single-block packets; block/line ID (0x00=L1, 0x01=L2), not relay state, on dual-block packets - see issue #14
+V2_BYTE_LINE_ID = 42  # Relay status (0x00=ON) on single-block packets; on dual-block packets the low bit is the block/line ID and bit 0x10 is relay-open (experimental, issues #17/#26)
+V2_DUAL_BLOCK_RELAY_OPEN_BIT = 0x10  # Set in byte 42 while a 50A relay is open (seen on WD_E7 and WD_E5 for a commanded open)
 
 # V2 minimum packet sizes
 V2_MIN_DATA_PACKET_SIZE = 21  # Minimum for L1 V/I/P extraction

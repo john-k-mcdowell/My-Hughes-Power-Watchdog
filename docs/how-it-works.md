@@ -36,7 +36,7 @@ Entry point for the integration. Creates the `HughesPowerWatchdogCoordinator` an
 All constants organized by section:
 - **Device name prefixes** - V1 (PMD/PWS/PMS) and V2 (WD_V5/WD_E5/WD_V6/WD_E6/WD_E7/WD_V7)
 - **V1 protocol** - Service/characteristic UUIDs, byte positions for 40-byte data packets, power factor (bytes 20-22, x1000), frequency field (bytes 31-34), ASCII command strings (relayOn, reset, setTime, backLight, deleteAllRecord)
-- **V2 protocol** - Service/characteristic UUID, framing constants ($yw@ header, q! tail), protocol version, sequence max, command IDs (0x01-0x0D), message types, byte positions for all single-block fields (bytes 9-42), dual-block Line 2 fields (bytes 43-76), relay/neutral command payload values, ResultRes success code. Byte 34/68 is the neutral-monitoring enable/bypass setting (not a fault flag). Byte 42 is relay status on single-block (30A) packets, but a block/line identifier (not relay status) on dual-block (50A) packets, as is byte 76 — see issue #14.
+- **V2 protocol** - Service/characteristic UUID, framing constants ($yw@ header, q! tail), protocol version, sequence max, command IDs (0x01-0x0D), message types, byte positions for all single-block fields (bytes 9-42), dual-block Line 2 fields (bytes 43-76), relay/neutral command payload values, ResultRes success code. Byte 34/68 is the neutral-monitoring enable/bypass setting (not a fault flag). Byte 42 is relay status on single-block (30A) packets; on dual-block (50A) packets its low bit is the block/line ID and bit 0x10 means relay open (experimental, `V2_DUAL_BLOCK_RELAY_OPEN_BIT`, issues #17/#26), as in byte 76 for Line 2.
 - **Sensor keys** - String identifiers for all sensor types including backlight
 - **Entity keys** - Switch (monitoring, relay, neutral detection control), button (energy reset, error delete, trip restart), light (backlight)
 - **Error codes** - E1-E9, F1-F2 mapping dict
@@ -48,7 +48,7 @@ The core BLE data coordinator. Key responsibilities:
 - **Protocol detection** - Two-step: name-based guess, then service UUID confirmation
 - **Connection management** - Lock-protected connect/disconnect, exponential backoff retry
 - **V1 notification handler** - Buffers incoming chunks and drains every complete 40-byte packet from the buffer per notification (50A dual-line devices send Line 1 and Line 2 as two concatenated packets in one notification), extracts V/I/P/E/error/frequency/power factor per packet, identifies Line 1 vs Line 2
-- **V2 notification handler** - Parses $yw@ framed packets, extracts all fields including extended fields (output voltage, frequency, temperature, error code, power factor, boost mode, neutral monitoring setting, relay status [30A only], backlight). Also detects ResultRes acknowledgment packets for command responses.
+- **V2 notification handler** - Parses $yw@ framed packets, extracts all fields including extended fields (output voltage, frequency, temperature, error code, power factor, boost mode, neutral monitoring setting, relay status [30A: byte 42; 50A: bit 0x10 of byte 42, experimental], backlight). Also detects ResultRes acknowledgment packets for command responses.
 - **V2 dual-block decoder** - Handles 79-byte packets from 50A devices with two 34-byte data blocks
 - **Data dict builder** - Assembles all sensor values into dict for entity updates
 - **Health monitor** - Background task detecting stale notifications for auto-reconnect

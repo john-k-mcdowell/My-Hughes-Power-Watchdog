@@ -296,7 +296,7 @@ Each 34-byte block contains:
 | 27 | 1 | Temperature | Degrees Celsius — booster models only |
 | 28-31 | 4 | Frequency | BE uint32 / 100 (Hz) |
 | 32 | 1 | Error Code | 0=OK, 1=E1, etc. |
-| 33 | 1 | Relay Status / Line ID | `0x00`=ON, `0x01`/`0x02`=OFF/Error on single-block (30A) packets; `0x00`=Line 1 block, `0x01`=Line 2 block (not relay state) on dual-block (50A) packets — see below |
+| 33 | 1 | Relay Status / Line ID | `0x00`=ON, `0x01`/`0x02`=OFF/Error on single-block (30A) packets; low bit = block ID (`0x00`=Line 1, `0x01`=Line 2) plus bit `0x10` = relay open on dual-block (50A) packets — see below |
 
 **Absolute byte positions in the packet (including 9-byte header):**
 
@@ -318,7 +318,7 @@ Each 34-byte block contains:
 
 #### Dual-Block Layout (50A devices, payload length 0x0044 = 68 bytes)
 
-For 50A devices, the packet contains two 34-byte blocks. Block 2 (Line 2) starts at byte 43. **Byte 42 (the last byte of Block 1) is also repurposed on dual-block packets**: it becomes a block/line identifier (`0x00`=Line 1, `0x01`=Line 2), not relay status — a packet capture from a WD_E5 in [issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14) showed this byte stays constant per block through a full relay open/close cycle. No correct relay-status byte is currently known for dual-block (50A) devices — the integration reports relay state as unknown there, while single-block (30A) devices keep working relay status via byte 42 above.
+For 50A devices, the packet contains two 34-byte blocks. Block 2 (Line 2) starts at byte 43. **Byte 42 (the last byte of Block 1) means something different on dual-block packets**: the low bit is the block/line identifier (`0x00`=Line 1, `0x01`=Line 2), and bit `0x10` is set while the relay is open (byte 76 does the same for Line 2: `0x01` closed, `0x11` open). **Experimental:** a commanded open was captured on a WD_E7 ([issue #17](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/17)) and a WD_E5 ([issue #26](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/26)): byte 42 went `0x00` -> `0x10` and back. An earlier WD_E5 capture ([issue #14](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/14)) saw `0x00`/`0x01` during the power-up startup delay, so it is not yet known whether the bit also covers an open you did not command (trip, startup delay). The integration uses only bit `0x10` of byte 42; single-block (30A) devices keep using byte 42 as above.
 
 | Bytes | Field |
 |-------|-------|
