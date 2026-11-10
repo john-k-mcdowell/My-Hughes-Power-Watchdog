@@ -57,6 +57,7 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 - **Error Code** (number)
 - **Error Description** (text)
 - **Frequency Line 1** (Hz) - AC power line frequency
+- **Power Factor** (per line) - Ratio of real to apparent power. Gen 2 devices report it directly. On Gen 1 it is decoded from bytes 20-22 of the data packets; verified on a Gen 1 50A device, where it matches P / (V × I), but not yet on other Gen 1 models (values outside 0-1 are ignored)
 
 **Gen 2 (V2) Booster Models Only (V8/V9/E8/E9) — _untested_:**
 - **Output Voltage** (volts) - Voltage after autoformer adjustment (field mirrors the energy counter on non-booster V5/E5/V6/E6 devices, so it is hidden there)
@@ -68,7 +69,6 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 **Gen 2 (V2) Models Only:**
 - **Relay Status** - Whether the power relay is ON or tripped (binary sensor). Only reported on 30A (single-line) devices — unavailable on 50A (dual-line) devices, see note below.
 - **Neutral Detection** - Whether a lost-neutral fault (error code 8) is currently reported (binary sensor)
-- **Power Factor** (per line) - Ratio of real to apparent power
 
 **50 Amp (Dual-Line) Units Only:**
 - **Line 2 Voltage** (volts)
@@ -80,12 +80,17 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 
 ### Device Controls (v0.8.0)
 
-> **Gen 1 (V1) device commands are a work in progress.** BLE writes succeed but the device currently ignores them, so command entities (Power Relay, Backlight, Reset Energy, Clear Error History) are **only exposed on Gen 2 (V2) devices** until the V1 wire format is reverse-engineered. The underlying code remains in the codebase. The one exception is **Restart After Trip** (below), whose wire format is known and tested.
+> **Gen 1 (V1) device commands are a work in progress.** BLE writes succeed but the device currently ignores them, so the Power Relay switch and Clear Error History button are **only exposed on Gen 2 (V2) devices** until their V1 wire formats are verified. Restart After Trip and Reset Energy Counter are exposed on Gen 1 (see below). The underlying code remains in the codebase. The one exception is **Restart After Trip** (below), whose wire format is known and tested.
 
 **Gen 1 (V1) devices:**
 - **Restart After Trip** (button) - Restores power after the Watchdog trips on an over-current (E3/E4) or missing-neutral (E8) error, the same as the restart button on the official Gen 1 app's alert screen. Pressing it when no E3/E4/E8 error is active is refused and nothing is sent to the device. The button's attributes show when the command was last sent (`last_sent`) and the device's acknowledgment (`last_reply`, normally `relay on`, and `last_reply_time`). Clear the cause of the trip (reduce the load) before pressing it.
 
 > **Tested on Gen 1 30A only.** The Restart After Trip button has been verified on a Gen 1 30A device, but **not on a Gen 1 50A (dual-line) device**. 50A devices report each line separately, so behavior on a real E3/E4/E8 trip may differ. **If you use this button on a Gen 1 50A device, please report whether it worked or not on [issue #25](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/25).** Include the error (E3, E4 or E8), whether power was restored, and the button's `last_reply` attribute. Please don't force a trip just to test it.
+
+- **Reset Energy Counter** (button) - Zeroes the device's cumulative kWh counter using the real command from the official Gen 1 app. **This cannot be undone.** Verified on a Gen 1 50A device: the device replies `RESET` and **both lines** reset to zero. The button's attributes show the last command sent and the device's reply (`last_reply`). Add a confirmation to your dashboard card if you want protection against accidental presses.
+- **Backlight:** not available on Gen 1, see the note below.
+
+> **No Gen 1 backlight control (so far).** A Gen 1 50A device (BLE name `PMD…`) did not respond to the official app's backlight command in either form we tried (the level as an ASCII digit, and as a raw byte): no reply and no change. Its official iOS app has no backlight setting either, so that model most likely has no software-controllable backlight, and the integration no longer creates a Gen 1 Backlight light. The Gen 1 backlight code is kept, disabled by `V1_BACKLIGHT_ENTITY_ENABLED` in `const.py`. If your Gen 1 device's official app **does** have a backlight setting and you would like to help test it, please [open an issue](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/new) with your model name.
 
 **Gen 2 (V2) devices:**
 - **Power Relay** (switch) - Turn the power relay on/off. On 30A (single-line) devices the on/off indicator reflects real relay state. On 50A (dual-line) devices no protocol byte reliably reports live relay state, so the indicator shows as unknown — the commands themselves still work on both.
@@ -100,7 +105,22 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 
 ## Installation
 
-### HACS Installation (Recommended)
+Home Assistant **2026.11** moved HACS into Home Assistant itself as the built-in **Marketplace** (see the [2026.11 release notes](https://www.home-assistant.io/blog/2026/11/04/release-202611/) and the [Marketplace documentation](https://www.home-assistant.io/integrations/marketplace/)). Follow the section that matches your Home Assistant version. This integration still requires Home Assistant **2024.11.0** or newer.
+
+### Marketplace Installation (Home Assistant 2026.11 and newer)
+
+1. Open **Settings > Marketplace**. The first time, select "I understand the risks and agree."
+2. In the upper-right corner, select **Add from link**.
+3. Under "GitHub link", enter `https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog` (or `john-k-mcdowell/My-Hughes-Power-Watchdog`). If asked for a type, choose **Integration**, then select **Add**. Adding a custom repository needs a connected GitHub account; if prompted, select **Continue**, open the link, enter the code and approve.
+4. Open "Hughes Power Watchdog" in the Marketplace and select **Install**, review the version, and select **Install** again.
+5. If the setup page doesn't open on its own, add the integration under **Settings > Devices & services**. If Home Assistant asks for a restart first, a repair under **Settings > System > Repairs** says so and can restart Home Assistant for you.
+6. **After updating** the integration later, restart Home Assistant to apply the update (the Marketplace shows a repair as a reminder).
+
+**Already using HACS?** Nothing to do. Home Assistant migrates HACS into the Marketplace on the first start after updating to 2026.11. Installed integrations, custom repositories and update entities carry over, and the HACS integration is removed. The separate HACS installer no longer works on 2026.11 and newer.
+
+**Beta (pre-release) versions:** the Marketplace only offers stable releases by default. To try a pre-release: open **Settings > Devices & services > Marketplace**, open the entry for this repository, enable the **Pre-release** entity (it is disabled by default), and turn it on. Then update from the Marketplace as usual. You can also pick a specific version with the three-dots menu and **Install another version**, but don't use that to roll back; restore a backup instead.
+
+### HACS Installation (Home Assistant before 2026.11)
 
 1. Open HACS in your Home Assistant instance
 2. Click on "Integrations"
@@ -112,6 +132,8 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 8. Find "Hughes Power Watchdog" in the integration list
 9. Click "Download"
 10. Restart Home Assistant
+
+To try a beta, enable "Show beta versions" in the HACS settings for this repository.
 
 ### Manual Installation
 
@@ -150,7 +172,7 @@ Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth 
 - Error codes - Working (v0.7.0)
 - Frequency - Working (v0.7.0)
 - Line 2 (50A dual-phase) - Working
-- Neutral Detection, Power Factor - Working (v0.10.0)
+- Neutral Detection, Power Factor - Working (v0.10.0). Gen 1 power factor sensors added in v0.12.0
 - Device commands — relay, backlight, energy reset, error delete, clock sync - Working (v0.8.0)
 - Output Voltage, Temperature, Boost Mode (booster models V8/V9/E8/E9 only) - **Untested**
 - Neutral Detection Control switch - Working, reflects real device state (v0.10.0)
@@ -202,6 +224,9 @@ Debug logs include your device's raw BLE packet bytes but no personal informatio
 - Make sure Bluetooth is enabled on your Home Assistant host
 - Verify your Hughes device is powered on and within Bluetooth range
 - Try using the Hughes mobile app to confirm the device is functioning
+
+### Entity Names Look Different After Updating to Home Assistant 2026.11
+Home Assistant 2026.11 changed how dashboards label entities: a card, badge or row without a custom name now shows the device name followed by the entity name (for example "Power Watchdog Voltage Line 1") instead of just the entity's friendly name. Entity IDs, automations and scripts are not affected. This is a Home Assistant display change, not something the integration does; set a name on the card row if you prefer the old look. See the [2026.11 release notes](https://www.home-assistant.io/blog/2026/11/04/release-202611/).
 
 ### Connection Issues
 - Disconnect any mobile apps connected to the Hughes device

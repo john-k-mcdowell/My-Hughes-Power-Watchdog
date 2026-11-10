@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,36 +20,12 @@ from custom_components.hughes_power_watchdog.button import (
 )
 from custom_components.hughes_power_watchdog.const import DOMAIN, V1_TRIP_LATCH_SECONDS
 
+from .fakes import FFE0, FFE2, FFF5, fake_v1_client as _client
 from .packets import v1_packet
 from custom_components.hughes_power_watchdog.coordinator import (
     HughesPowerWatchdogCoordinator,
 )
 
-FFE0 = "0000ffe0-0000-1000-8000-00805f9b34fb"
-FFE2 = "0000ffe2-0000-1000-8000-00805f9b34fb"
-FFF5 = "0000fff5-0000-1000-8000-00805f9b34fb"
-
-
-def _client(properties: list[str], service_uuid: str = FFE0) -> MagicMock:
-    """Return a fake BleakClient with a V1-style GATT table."""
-    write_char = SimpleNamespace(uuid=FFF5, properties=properties)
-    services = [
-        SimpleNamespace(
-            uuid="00001800-0000-1000-8000-00805f9b34fb", characteristics=[]
-        ),
-        SimpleNamespace(
-            uuid=service_uuid,
-            characteristics=[
-                SimpleNamespace(uuid=FFE2, properties=["notify"]),
-                write_char,
-            ],
-        ),
-    ]
-    client = MagicMock()
-    client.services = services
-    client.write_gatt_char = AsyncMock()
-    client.write_char = write_char
-    return client
 
 
 def _coordinator(
@@ -350,12 +325,15 @@ async def test_button_attributes_before_any_command(coordinator_factory) -> None
 async def test_platform_adds_trip_button_only_on_v1(
     hass: HomeAssistant, coordinator_factory
 ) -> None:
-    """V1 gets only the restart button; V2 gets its own buttons, never this one."""
+    """V1 gets the restart and energy reset buttons; V2 never gets the restart one."""
     v1, _ = coordinator_factory(name="PMS0000000000000000")
     hass.data.setdefault(DOMAIN, {})[v1.config_entry.entry_id] = v1
     added: list = []
     await button_setup_entry(hass, v1.config_entry, lambda ents: added.extend(ents))
-    assert [type(e) for e in added] == [HughesPowerWatchdogTripRestartButton]
+    assert {type(e) for e in added} == {
+        HughesPowerWatchdogTripRestartButton,
+        HughesPowerWatchdogEnergyResetButton,
+    }
 
     v2, _ = coordinator_factory(name="WD_V5_000000000000")
     hass.data[DOMAIN][v2.config_entry.entry_id] = v2

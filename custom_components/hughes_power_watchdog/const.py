@@ -155,6 +155,11 @@ V2_VOLTAGE_MIN = 90.0  # Minimum reasonable voltage (V)
 V2_VOLTAGE_MAX = 145.0  # Maximum reasonable voltage (V)
 
 # V1 frequency field in chunk 2 (bytes 31-34)
+# Power factor x1000 as a 3-byte big-endian value (e.g. 840 = 0.840). Inferred
+# from captured packets (matches P / (V x I)); UNCONFIRMED beyond the V1 50A.
+V1_BYTE_POWER_FACTOR_START = 20
+V1_BYTE_POWER_FACTOR_END = 23
+V1_POWER_FACTOR_DIVISOR = 1000
 V1_BYTE_FREQUENCY_START = 31
 V1_BYTE_FREQUENCY_END = 35
 # Frequency conversion factor (int32 / 100 = Hz)
@@ -162,10 +167,8 @@ FREQUENCY_CONVERSION_FACTOR = 100
 
 # V1 Commands (ASCII strings sent via RX characteristic)
 V1_CMD_RELAY_ON = "relayOn"
-V1_CMD_ENERGY_RESET = "reset"
 V1_CMD_DELETE_ALL_RECORDS = "deleteAllRecord"
 V1_CMD_SET_TIME = "setTime"
-V1_CMD_BACKLIGHT = "backLight"
 
 # V1 restart after trip (the "relay on" button the official Gen 1 app shows
 # on its E3/E4/E8 alert). Raw ASCII written to V1_CHARACTERISTIC_UUID_RX
@@ -191,6 +194,23 @@ V1_COMMAND_REPLY_PREFIXES = (
     b"set:bl",
     b"power on time:",
 )
+
+# V1 commands written as raw ASCII to V1_CHARACTERISTIC_UUID_RX (0xFFF5). These
+# are the wire strings the official Gen 1 app sends (not its enum names).
+# Energy reset: device acks with "RESET" (verified on a V1 50A). Backlight:
+# "SET:BL" + the level (0-4) as ONE RAW BYTE, device acks with "set:bl...".
+# The ASCII-digit form ("SET:BL4") got no ack and no effect on a V1 50A, so the
+# raw-byte form is being tried; it is UNTESTED.
+V1_ENERGY_RESET_PAYLOAD = b"RESEt"
+V1_BACKLIGHT_PAYLOAD_PREFIX = b"SET:BL"
+
+# Whether Gen 1 (V1) devices get a Backlight light entity. Disabled: neither the
+# ASCII-digit ("SET:BL4") nor the raw-byte ("SET:BL" + 0x04) command got a reply
+# or any effect on a Gen 1 50A (PMD...), whose official app has no backlight
+# setting, so that model most likely has no backlight control. The V1 backlight
+# code is kept so owners of a Gen 1 device that does have one can help test it:
+# set this to True to expose the light on V1.
+V1_BACKLIGHT_ENTITY_ENABLED = False
 
 # V1 Backlight range
 V1_BACKLIGHT_MAX = 4

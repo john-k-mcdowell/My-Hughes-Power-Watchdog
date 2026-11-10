@@ -74,11 +74,10 @@ async def async_setup_entry(
         sensors.append(HughesPowerWatchdogOutputVoltageSensor(coordinator))
         sensors.append(HughesPowerWatchdogTemperatureSensor(coordinator))
 
-    # Power factor (V2 only - not present in the V1 protocol)
-    if coordinator.is_v2_protocol:
-        sensors.append(
-            HughesPowerWatchdogPowerFactorSensor(coordinator, SENSOR_POWER_FACTOR, "Line 1")
-        )
+    # Power factor (V2 field; V1 value inferred from packet captures)
+    sensors.append(
+        HughesPowerWatchdogPowerFactorSensor(coordinator, SENSOR_POWER_FACTOR, "Line 1")
+    )
 
     # Dual-line sensors (50A devices only - both V1 and V2). Line 2 data
     # arrives with the BLE notifications, which may not have happened yet,
@@ -115,11 +114,10 @@ def _line_2_sensors(
         HughesPowerWatchdogEnergySensor(coordinator, SENSOR_ENERGY_L2, "Energy Line 2"),
         HughesPowerWatchdogFrequencyLineSensor(coordinator, SENSOR_FREQUENCY_L2, "Line 2"),
     ]
-    # Power factor (V2 only - not present in the V1 protocol)
-    if coordinator.is_v2_protocol:
-        sensors.append(
-            HughesPowerWatchdogPowerFactorSensor(coordinator, SENSOR_POWER_FACTOR_L2, "Line 2")
-        )
+    # Power factor (V2 field; V1 value inferred from packet captures)
+    sensors.append(
+        HughesPowerWatchdogPowerFactorSensor(coordinator, SENSOR_POWER_FACTOR_L2, "Line 2")
+    )
     return sensors
 
 
@@ -348,7 +346,7 @@ class HughesPowerWatchdogTemperatureSensor(HughesPowerWatchdogSensor):
 
 
 class HughesPowerWatchdogPowerFactorSensor(HughesPowerWatchdogSensor):
-    """Power factor sensor for Hughes Power Watchdog (V2 only)."""
+    """Power factor sensor for Hughes Power Watchdog."""
 
     _attr_device_class = SensorDeviceClass.POWER_FACTOR
     _attr_state_class = SensorStateClass.MEASUREMENT

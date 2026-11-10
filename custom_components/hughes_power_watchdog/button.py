@@ -34,11 +34,13 @@ async def async_setup_entry(
         config_entry.entry_id
     ]
 
-    # Command entities are only exposed on V2 devices. V1 command support is
-    # still being reverse-engineered — writes succeed but the device ignores them.
-    # The one exception is the V1 restart after trip, whose wire format is known.
+    # V1 commands: only those whose wire format is known are exposed (restart
+    # after trip, energy reset). The V1 error-history delete is not enabled yet.
     if not coordinator.is_v2_protocol:
-        async_add_entities([HughesPowerWatchdogTripRestartButton(coordinator)])
+        async_add_entities([
+            HughesPowerWatchdogTripRestartButton(coordinator),
+            HughesPowerWatchdogEnergyResetButton(coordinator),
+        ])
         return
 
     async_add_entities([
@@ -52,8 +54,9 @@ class HughesPowerWatchdogEnergyResetButton(
 ):
     """Energy reset button for Hughes Power Watchdog.
 
-    Resets the cumulative kWh counter to zero.
-    Works on both V1 and V2 devices.
+    Resets the cumulative kWh counter to zero. This cannot be undone.
+    V2: EnergyReset command. V1 (experimental, untested on hardware): the app's
+    "RESEt" string written to 0xFFF5; the device acks with "RESET".
     """
 
     _attr_has_entity_name = True
@@ -75,6 +78,19 @@ class HughesPowerWatchdogEnergyResetButton(
             self.coordinator.monitoring_enabled
             and self.coordinator.last_update_success
         )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the last V1 command sent and the device's reply (V1 only)."""
+        if self.coordinator.is_v2_protocol:
+            return None
+        info = self.coordinator.v1_command_info
+        return {
+            "last_command": info["last_command"],
+            "last_command_sent": _timestamp_to_iso(info["last_command_sent"]),
+            "last_reply": info["last_reply"],
+            "last_reply_time": _timestamp_to_iso(info["last_reply_time"]),
+        }
 
     async def async_press(self) -> None:
         """Handle the button press."""

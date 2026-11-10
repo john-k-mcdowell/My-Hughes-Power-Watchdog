@@ -44,14 +44,17 @@ from .const import (
     LINE_2_ID,
     TOTAL_DATA_SIZE,
     V1_BYTE_FREQUENCY_START,
+    V1_BYTE_POWER_FACTOR_END,
+    V1_BYTE_POWER_FACTOR_START,
+    V1_POWER_FACTOR_DIVISOR,
     V1_BYTE_FREQUENCY_END,
     V1_CHARACTERISTIC_UUID_CMD,
     V1_CHARACTERISTIC_UUID_RX,
-    V1_CMD_BACKLIGHT,
+    V1_BACKLIGHT_PAYLOAD_PREFIX,
     V1_CMD_DELETE_ALL_RECORDS,
-    V1_CMD_ENERGY_RESET,
     V1_CMD_RELAY_ON,
     V1_CMD_SET_TIME,
+    V1_ENERGY_RESET_PAYLOAD,
     V1_COMMAND_REPLY_PREFIXES,
     V1_TRIP_LATCH_SECONDS,
     V1_TRIP_RESTART_ERROR_CODES,
@@ -256,6 +259,8 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # V1 restart-after-trip tracking (last command sent, last ASCII reply)
         self._last_trip_restart_sent: float | None = None
+        # Last V1 command written to 0xFFF5, as (description, timestamp)
+        self._last_v1_command: tuple[str, float] | None = None
         # Last trip error (E3/E4/E8) seen on any V1 packet, as (code, timestamp)
         self._trip_latch: tuple[int, float] | None = None
         self._last_command_reply: str | None = None
@@ -395,6 +400,20 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def error_code(self) -> int:
         """Return the last error code reported by the device."""
         return self._error_code
+
+    @property
+    def v1_command_info(self) -> dict[str, Any]:
+        """Return the last V1 command written and the device's last ASCII reply.
+
+        Times are Unix timestamps (seconds), or None if not yet seen.
+        """
+        command, sent = self._last_v1_command or (None, None)
+        return {
+            "last_command": command,
+            "last_command_sent": sent,
+            "last_reply": self._last_command_reply,
+            "last_reply_time": self._last_command_reply_time,
+        }
 
     @property
     def active_trip_code(self) -> int | None:
@@ -835,7 +854,9 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._is_v2_protocol:
             success = await self._send_v2_command(V2_CMD_ENERGY_RESET)
         else:
-            success = await self._send_v1_command(V1_CMD_ENERGY_RESET)
+            success = await self._send_v1_wire_command(
+                V1_ENERGY_RESET_PAYLOAD, "energy reset"
+            )
         if success:
             # Withhold the total until Line 2 reports its reset counter too
             self._line_2_energy = None
@@ -885,8 +906,10 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         else:
             level = max(0, min(level, V1_BACKLIGHT_MAX))
-            # V1 backLight command includes the level value
-            return await self._send_v1_command(f"{V1_CMD_BACKLIGHT}{level}")
+            return await self._send_v1_wire_command(
+                V1_BACKLIGHT_PAYLOAD_PREFIX + bytes([level]),
+                f"backlight level {level}",
+            )
 
     async def async_set_neutral_detection(self, enable: bool) -> bool:
         """Enable or disable neutral detection monitoring (V2 only).
@@ -980,18 +1003,44 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             return False
 
+        if not await self._send_v1_wire_command(
+            V1_TRIP_RESTART_PAYLOAD, "restart after trip"
+        ):
+            return False
+        self._last_trip_restart_sent = time.time()
+        return True
+
+    async def _send_v1_wire_command(self, payload: bytes, description: str) -> bool:
+        """Write a raw ASCII command to the V1 command characteristic (0xFFF5).
+
+        Uses the same write type as the official Gen 1 app (without response
+        when the characteristic supports it). The device's acknowledgment
+        arrives on 0xFFE2 and is recorded by _notification_handler_v1.
+
+        Args:
+            payload: Raw ASCII bytes to write, e.g. b"RELAY ON".
+            description: Short name of the command, for logging.
+
+        Returns:
+            True if the BLE write succeeded, False if refused or failed.
+        """
+        if not self._monitoring_enabled:
+            _LOGGER.warning(
+                "[%s] V1: %s refused, monitoring is off", self.device_name, description
+            )
+            return False
         try:
             client = await self._ensure_connected()
             char = self._find_v1_write_characteristic(client)
             if char is None:
                 _LOGGER.error(
-                    "[%s] V1: Restart after trip failed, characteristic %s not found",
+                    "[%s] V1: %s failed, characteristic %s not found",
                     self.device_name,
+                    description,
                     V1_CHARACTERISTIC_UUID_RX,
                 )
                 return False
 
-            # Android's default write type: without response when supported
             props = [prop.lower() for prop in char.properties]
             if "write-without-response" in props:
                 response = False
@@ -999,29 +1048,27 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 response = True
             else:
                 _LOGGER.error(
-                    "[%s] V1: Restart after trip failed, %s is not writable (%s)",
+                    "[%s] V1: %s failed, %s is not writable (%s)",
                     self.device_name,
+                    description,
                     V1_CHARACTERISTIC_UUID_RX,
                     props,
                 )
                 return False
 
-            await client.write_gatt_char(
-                char, V1_TRIP_RESTART_PAYLOAD, response=response
-            )
-            self._last_trip_restart_sent = time.time()
+            await client.write_gatt_char(char, payload, response=response)
+            self._last_v1_command = (description, time.time())
             _LOGGER.info(
-                "[%s] V1: Sent restart after trip (error code %d, response=%s)",
+                "[%s] V1: Sent %s (%r, response=%s)",
                 self.device_name,
-                trip_code,
+                description,
+                payload,
                 response,
             )
             return True
         except (BleakError, UpdateFailed) as err:
             _LOGGER.error(
-                "[%s] V1: Failed to send restart after trip: %s",
-                self.device_name,
-                err,
+                "[%s] V1: Failed to send %s: %s", self.device_name, description, err
             )
             return False
 
@@ -1326,6 +1373,22 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         error_code = packet[BYTE_ERROR_CODE]
         self._record_v1_error_code(error_code)
 
+        # Power factor (bytes 20-22, x1000). Inferred from captures, so values
+        # outside 0-1 are discarded rather than shown.
+        pf_bytes = packet[V1_BYTE_POWER_FACTOR_START:V1_BYTE_POWER_FACTOR_END]
+        pf_value = int.from_bytes(pf_bytes, "big") / V1_POWER_FACTOR_DIVISOR
+        power_factor: float | None = pf_value if 0.0 <= pf_value <= 1.0 else None
+
+        # Remaining undecoded chunk 2 bytes, logged for further reverse engineering
+        _LOGGER.debug(
+            "[%s] V1: Power factor raw=%s -> %s; undecoded bytes 23-30=%s 35-36=%s",
+            self.device_name,
+            pf_bytes.hex(),
+            power_factor,
+            packet[23:31].hex(),
+            packet[35:37].hex(),
+        )
+
         # Extract frequency from chunk 2 (bytes 31-34, int32 / 100)
         freq_bytes = packet[V1_BYTE_FREQUENCY_START:V1_BYTE_FREQUENCY_END]
         freq_raw = struct.unpack(">i", freq_bytes)[0]
@@ -1362,6 +1425,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if line_id == LINE_1_ID:
             self._frequency = frequency
+            self._power_factor = power_factor
             self._line_1_data = {
                 "voltage": voltage,
                 "current": current,
@@ -1371,6 +1435,7 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug("[%s] V1: Line 1 data: %s", self.device_name, self._line_1_data)
         elif line_id == LINE_2_ID:
             self._frequency_l2 = frequency
+            self._power_factor_l2 = power_factor
             self._line_2_data = {
                 "voltage": voltage,
                 "current": current,

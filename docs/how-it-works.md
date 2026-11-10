@@ -17,7 +17,7 @@ custom_components/hughes_power_watchdog/
   config_flow.py     - HA config flow for device discovery/setup
   const.py           - Constants, byte positions, sensor keys, command IDs, error codes
   coordinator.py     - BLE data coordinator (connection, parsing, commands, push updates)
-  light.py           - Light entity (backlight brightness control)
+  light.py           - Light entity (backlight brightness control; V2 only, V1 disabled)
   manifest.json      - HA integration manifest with BLE device name filters
   sensor.py          - Sensor entities (voltage, current, power, energy, etc.)
   strings.json       - UI strings for config flow (source for translations/en.json)
@@ -35,18 +35,19 @@ Entry point for the integration. Creates the `HughesPowerWatchdogCoordinator` an
 ### `const.py`
 All constants organized by section:
 - **Device name prefixes** - V1 (PMD/PWS/PMS) and V2 (WD_V5/WD_E5/WD_V6/WD_E6/WD_E7/WD_V7)
-- **V1 protocol** - Service/characteristic UUIDs, byte positions for 40-byte data packets, frequency field (bytes 31-34), ASCII command strings (relayOn, reset, setTime, backLight, deleteAllRecord)
+- **V1 protocol** - Service/characteristic UUIDs, byte positions for 40-byte data packets, power factor (bytes 20-22, x1000), frequency field (bytes 31-34), ASCII command strings (relayOn, reset, setTime, backLight, deleteAllRecord)
 - **V2 protocol** - Service/characteristic UUID, framing constants ($yw@ header, q! tail), protocol version, sequence max, command IDs (0x01-0x0D), message types, byte positions for all single-block fields (bytes 9-42), dual-block Line 2 fields (bytes 43-76), relay/neutral command payload values, ResultRes success code. Byte 34/68 is the neutral-monitoring enable/bypass setting (not a fault flag). Byte 42 is relay status on single-block (30A) packets, but a block/line identifier (not relay status) on dual-block (50A) packets, as is byte 76 — see issue #14.
 - **Sensor keys** - String identifiers for all sensor types including backlight
 - **Entity keys** - Switch (monitoring, relay, neutral detection control), button (energy reset, error delete, trip restart), light (backlight)
 - **Error codes** - E1-E9, F1-F2 mapping dict
 - **Backlight ranges** - V1 max=4, V2 max=5
+- **`V1_BACKLIGHT_ENTITY_ENABLED`** - Feature flag (False): V1 devices get no Backlight light, because the one Gen 1 device tested has no backlight control. The V1 backlight code is kept so it can be tested on a model that has one
 
 ### `coordinator.py`
 The core BLE data coordinator. Key responsibilities:
 - **Protocol detection** - Two-step: name-based guess, then service UUID confirmation
 - **Connection management** - Lock-protected connect/disconnect, exponential backoff retry
-- **V1 notification handler** - Buffers incoming chunks and drains every complete 40-byte packet from the buffer per notification (50A dual-line devices send Line 1 and Line 2 as two concatenated packets in one notification), extracts V/I/P/E/error/frequency per packet, identifies Line 1 vs Line 2
+- **V1 notification handler** - Buffers incoming chunks and drains every complete 40-byte packet from the buffer per notification (50A dual-line devices send Line 1 and Line 2 as two concatenated packets in one notification), extracts V/I/P/E/error/frequency/power factor per packet, identifies Line 1 vs Line 2
 - **V2 notification handler** - Parses $yw@ framed packets, extracts all fields including extended fields (output voltage, frequency, temperature, error code, power factor, boost mode, neutral monitoring setting, relay status [30A only], backlight). Also detects ResultRes acknowledgment packets for command responses.
 - **V2 dual-block decoder** - Handles 79-byte packets from 50A devices with two 34-byte data blocks
 - **Data dict builder** - Assembles all sensor values into dict for entity updates
@@ -69,6 +70,7 @@ Key methods:
 - `_next_sequence()` - V2 sequence number (1-100 cycling)
 - `_build_v2_command()` - Constructs $yw@ framed command packet
 - `_send_v2_command()` - Sends V2 command, optionally waits for ResultRes ack (5s timeout)
+- `_send_v1_wire_command(payload, description)` - Writes a raw ASCII command to the V1 command characteristic `0xFFF5` (found by `_find_v1_write_characteristic()`; write-without-response when supported). Used by restart after trip, V1 energy reset (`RESEt`) and V1 backlight (`SET:BL<n>`). Records the command for `v1_command_info`; refuses when monitoring is off. Acks (`RESET`, `set:bl..`, `relay on`) arrive on `0xFFE2` and are recorded by `_notification_handler_v1`
 - `_send_v1_command()` - Writes ASCII command to V1 command characteristic `0x1003` (write-with-response). Legacy path: it sends the app's enum names rather than the real wire strings, so the device ignores them and these V1 command entities are not exposed (see `docs/protocol.md`).
 - `async_restart_after_trip()` - V1 only. Writes the raw ASCII `RELAY ON` to `0xFFF5` (found via `_find_v1_write_characteristic()`), only while monitoring is on and a trip error (E3/E4/E8) has been seen within `V1_TRIP_LATCH_SECONDS` (`active_trip_code`). The latch exists because 50A devices send Line 1 and Line 2 as separate packets that each overwrite the stored error code; `_record_v1_error_code()` stores the code and latches trip errors. The device's `relay on` acknowledgment arrives on `0xFFE2`; `_notification_handler_v1()` records short ASCII command replies separately from the 40-byte data buffer.
 
@@ -89,13 +91,13 @@ HA sensor entities:
 - `HughesPowerWatchdogFrequencyLineSensor` - Per-line frequency (50A V2 dual-line only, Line 2)
 - `HughesPowerWatchdogOutputVoltageSensor` - Output voltage (V2 booster models only: V8/V9/E8/E9)
 - `HughesPowerWatchdogTemperatureSensor` - Temperature in Celsius (V2 booster models only; reads zero on non-booster models)
-- `HughesPowerWatchdogPowerFactorSensor` - Power factor, unitless ratio (per-line, V2 only)
+- `HughesPowerWatchdogPowerFactorSensor` - Power factor, unitless ratio (per line). V2 reports it directly; V1 decodes it from packet bytes 20-22 / 1000 (range-checked 0-1; verified on a Gen 1 50A)
 
 Sensor creation is gated by device capabilities:
 - **All devices**: Line 1 V/I/P, energy, error code/text, frequency
 - **Dual-line (50A) devices** (`coordinator.is_dual_line`): Line 2 V/I/P, combined power, energy Line 1 and Line 2, frequency Line 2. If the device is not yet known to be dual-line at setup (very first connection), a coordinator listener adds these sensors once the first Line 2 data arrives
 - **V2 booster devices only** (`coordinator.is_v2_protocol and coordinator.has_booster`): Output voltage, Temperature (V5/E5/V6/E6 have no real values for these — output voltage mirrors the energy counter and temperature reads zero)
-- **V2 devices only** (`coordinator.is_v2_protocol`): Power factor Line 1, and Line 2 when dual-line
+- **All devices**: Power factor Line 1, and Line 2 when dual-line
 
 ### `binary_sensor.py`
 HA binary sensor entities (V2 protocol only):
@@ -104,13 +106,13 @@ HA binary sensor entities (V2 protocol only):
 - `HughesPowerWatchdogBoostModeSensor` - Autoformer boost active/inactive. Only created for booster models (`coordinator.has_booster` → V8/V9/E8/E9).
 
 ### `button.py`
-HA button entities. V2 only, except the V1 restart button (other V1 command support is work-in-progress):
-- `HughesPowerWatchdogEnergyResetButton` - Resets cumulative kWh counter to zero (V2). Raises an error in the UI if the command fails
+HA button entities. V2 gets energy reset and error delete; V1 gets restart after trip and energy reset (other V1 command support is work-in-progress):
+- `HughesPowerWatchdogEnergyResetButton` - Resets cumulative kWh counter to zero (V2; V1 verified on a 50A: writes `RESEt`, device acks `RESET` and both lines zero; V1 attributes `last_command`, `last_command_sent`, `last_reply`, `last_reply_time`). Raises an error in the UI if the command fails
 - `HughesPowerWatchdogErrorDeleteButton` - Deletes all stored error records from device (V2). Raises an error in the UI if the command fails
 - `HughesPowerWatchdogTripRestartButton` - Restarts power after an E3/E4/E8 trip (**V1 only**). Raises an error in the UI if no such trip is active or the write fails. Attributes: `last_sent`, `last_reply`, `last_reply_time`. Verified on 30A only; 50A (V1) is untested, see issue #25
 
 ### `light.py`
-HA light entity with brightness control (**V2 only** — V1 command support is work-in-progress):
+HA light entity with brightness control. **Created on V2 only.** The V1 code path is kept but not exposed (`V1_BACKLIGHT_ENTITY_ENABLED = False` in `const.py`): a Gen 1 50A ignored both the ASCII-digit and raw-byte forms of `SET:BL` and its official app has no backlight setting. When enabled on V1, the light writes `SET:BL` + the level as one raw byte, has no readback so the state is `assumed_state` and restored with `RestoreEntity`:
 - `HughesPowerWatchdogBacklightLight` - Device LED backlight brightness
   - Uses `ColorMode.BRIGHTNESS` (HA range 0-255)
   - Maps to discrete device levels: V2 = 0-5 (V1 = 0-4 when V1 commands are enabled)
@@ -163,7 +165,7 @@ BLE write to device characteristic
 
 | Protocol | Packet Size | Encoding | Sensors |
 |----------|-------------|----------|---------|
-| V1 | 40 bytes (2x20 chunks) | Signed int32/10000 | V, I, P, E, error, frequency |
+| V1 | 40 bytes (2x20 chunks) | Signed int32/10000 | V, I, P, E, error, frequency, power factor |
 | V2 single-block | 45 bytes | Unsigned int32/10000 | V, I, P, E + output V, freq, temp, error, power factor, boost, neutral monitoring, relay status, backlight |
 | V2 dual-block | 79 bytes | Same | Same + Line 2 of all fields; byte 42 becomes line ID instead of relay status |
 
@@ -174,11 +176,15 @@ V1 command wire format is unresolved — writes are accepted by the device but s
 | Command | V1 (WIP — not exposed) | V2 | Entity Type |
 |---------|------------------------|----|-------------|
 | Relay on/off | `relayOn` (toggle) | SetOpen 0x0B (explicit on/off) | Switch (V2 only) |
-| Energy reset | `reset` | EnergyReset 0x03 | Button (V2 only) |
+| Energy reset | `RESEt` -> ack `RESET` (verified on V1 50A) | EnergyReset 0x03 | Button |
 | Clock sync | `setTime` | SetTime 0x06 | Auto on connect |
-| Backlight | `backLight` + level (0-4) | SetBacklight 0x07 (0-5) | Light (V2 only) |
+| Backlight | `SET:BL` + level (0-4); no ack from the Gen 1 50A tested, so not exposed | SetBacklight 0x07 (0-5) | Light (V2 only) |
 | Neutral detection | N/A | NeutralDetection 0x0D | Switch (V2 only) |
 | Delete errors | `deleteAllRecord` | ErrorDel 0x05 (0xFF=all) | Button (V2 only) |
+
+## Distribution
+
+The repository is installed through HACS, which Home Assistant 2026.11 and newer provide built in as the **Marketplace**. Both read `hacs.json` (and the `custom_components/hughes_power_watchdog/` folder layout) from the GitHub repository, and both install pre-releases only when the user opts in (HACS: "Show beta versions"; Marketplace: the per-repository **Pre-release** entity). The `Validate` workflow still runs the `hacs/action` check. The integration itself needs no code change for the Marketplace: it doesn't use HACS's internal data, `hass.data["hacs"]`, or its dispatcher signals. User-facing install steps are in the README.
 
 ## Tests
 
@@ -188,6 +194,9 @@ V1 command wire format is unresolved — writes are accepted by the device but s
 - `packets.py` - Packet builders and the real WD_E7 50A packets captured in issue #17
 - `test_trip_restart.py` - V1 Restart After Trip: command gating (E3/E4/E8 only, V1 only, monitoring on), 50A trip latch, characteristic lookup and failure paths, write-type selection, ack handling that keeps replies out of the data buffer, the buttons (identity, availability, failures) and button platform setup
 - `test_dual_line_energy.py` - 50A detection and persistence, per-line and total energy (V1 and V2), invalid Line 2 handling, energy reset
+- `fakes.py` - Fake BLE client with a V1-style GATT table
+- `test_v1_commands.py` - V1 energy reset and backlight commands: payloads and clamping, acks, failure handling, light assumed state and restore, button platform setup for V1 and V2, and the light platform (V1 disabled unless the flag is on, V2 always)
+- `test_v1_power_factor.py` - V1 power factor decoding (checked against real Gen 1 50A packets and P / (V × I)), range check, sensor creation for V1
 - `test_session_state.py` - Init/subscription state reset on new connections and disconnects
 
 ## Version History

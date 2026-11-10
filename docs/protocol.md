@@ -125,9 +125,10 @@ The device sends 40 bytes in two 20-byte BLE notification chunks. The chunks are
 
 | Offset | Size | Field | Format | Status |
 |--------|------|-------|--------|--------|
-| 20-30 | 11 | Unknown/Padding | Purpose not decoded | Unknown |
+| 20-22 | 3 | Power Factor | Big-endian unsigned 24-bit / 1000 (e.g. `0x000348` = 840 = 0.840). Values above 1000 are discarded | **Decoded (inferred).** Matches P / (V × I) on every packet checked from a Gen 1 50A device (Line 1 ≈ 0.84, Line 2 ≈ 1.00). Not yet confirmed on other Gen 1 models |
+| 23-30 | 8 | Unknown | Bytes 24-26 read 0 on both lines right after an energy reset; on Line 2 they then counted up while Line 1's stayed constant. Purpose not decoded | Unknown |
 | 31-34 | 4 | Frequency | Big-endian signed int32 / 100 (Hz) | **Decoded** |
-| 35-36 | 2 | Unknown/Padding | Purpose not decoded | Unknown |
+| 35-36 | 2 | Unknown | Changes on every packet in no visible pattern; looks like a checksum or counter | Unknown |
 | 37-39 | 3 | Line ID | `00 00 00` = Line 1, `01 01 01` = Line 2 | **Decoded** |
 
 ### Dual-Line Support
@@ -162,16 +163,16 @@ The app maps its internal command names (an enum: `relayOn`, `reset`, ...) to di
 | App command (enum) | Wire string written to `0xFFF5` | Ack on `0xFFE2` | Description | Status in this integration |
 |---------|-------------------|-------------------|-------------|------|
 | `relayOn` | `RELAY ON` (`52 45 4C 41 59 20 4F 4E`) | `relay on` | Restart power after a trip. The app only shows this button for errors 3 (L1 over-current), 4 (L2 over-current) and 8 (neutral missing) | **Implemented; tested on 30A only** — 50A untested, see [issue #25](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/25) (Restart After Trip button) |
-| `reset` | `RESEt` (note the lowercase `t`) | `RESET` | Reset accumulated kWh to 0 | Not yet wired up (untested) |
+| `reset` | `RESEt` (note the lowercase `t`) | `RESET` | Reset accumulated kWh to 0 | **Implemented and verified on a Gen 1 50A device** (Reset Energy Counter button): the device replied `RESET` within about 0.25 s and both Line 1 and Line 2 energy went to zero |
 | `deleteIndexRecord` | `DEL:REC` + record number | `del:rec...` | Delete one error record | Not yet wired up (untested) |
 | `deleteAllRecord` | `DEL:RECA` | `del:rec...` | Delete all error history | Not yet wired up (untested) |
 | `setTime` | `SET:T` + 6 raw bytes `[year-2000, month, day, hour, minute, second]` | `set:t` | Sync device clock | Not yet wired up (untested) |
-| `backLight` | `SET:BL` + level digit | `set:bl...` | Set LED brightness (0-4) | Not yet wired up (untested) |
+| `backLight` | `SET:BL` + level | `set:bl...` | Set LED brightness (0-4) | **Not working on the Gen 1 50A tested.** The level as an ASCII digit (`SET:BL4`) and as a single raw byte (`SET:BL` + `0x04`) were both written successfully, but the device sent no `set:bl` ack and nothing changed; that device's official iOS app also has no backlight setting. The code is kept but the entity is disabled (`V1_BACKLIGHT_ENTITY_ENABLED` in `const.py`); it may work on a Gen 1 model that has a backlight control |
 | `powerOnTime` | `POWER ON TIME` | `power on time:` + 5 bytes | Request last power-on date/time | Not yet wired up (untested) |
 
 > **Restart After Trip (tested):** On a real Gen 1 device, after a forced over-current trip, writing `RELAY ON` to `0xFFF5` produced the `relay on` acknowledgment on `0xFFE2` and the Watchdog restored power. The integration only sends it while the device reports E3, E4 or E8, matching the app. **Verified on a Gen 1 30A device only; not yet tested on a Gen 1 50A (dual-line) device**, where each line's packet carries its own error byte and it is unknown whether a trip sets it on both. Reports from 50A owners are requested on [issue #25](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/25).
 >
-> **Other V1 commands:** the wire strings above come from the same app code but have not been tested on hardware, so the corresponding entities (relay switch, backlight light, energy-reset button, error-delete button) remain hidden on V1 devices. The legacy code path (`_send_v1_command` in `coordinator.py`) still sends the enum names to `0x1003`.
+> **Other V1 commands:** the wire strings above come from the same app code but have not been tested on hardware, so the corresponding entities (relay switch, error-delete button) remain hidden on V1 devices. The energy-reset button and backlight light are exposed as experimental. The legacy code path (`_send_v1_command` in `coordinator.py`) still sends the enum names to `0x1003`.
 >
 > **Note on the relay:** `RELAY ON` is a restart, not a toggle. The Gen 1 app has no command to open the relay.
 

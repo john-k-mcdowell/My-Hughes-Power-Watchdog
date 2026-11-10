@@ -18,6 +18,17 @@ V2_DUAL_OPEN = bytes.fromhex(
 )
 
 
+# Real V1 50A (PMD...) packets from a debug log, one per line. Bytes 20-22 are
+# 0x000348 (840) on Line 1 and 0x0003e7 (999) on Line 2: P / (V x I) is 0.841
+# and 0.999 for the same packets, i.e. power factor x 1000.
+V1_L1_CAPTURE = bytes.fromhex(
+    "0103200012464500007a3200300f7e0252ec0000000348000842fc00000000000017726ccc000000"
+)
+V1_L2_CAPTURE = bytes.fromhex(
+    "0103200012347e00008da5004201f602faf33c000003e700091783000000000000177207ec010101"
+)
+
+
 def v1_packet(
     line: int,
     *,
@@ -27,6 +38,7 @@ def v1_packet(
     energy: float = 10.0,
     error: int = 0,
     frequency: float = 60.0,
+    power_factor: int = 0,
 ) -> bytes:
     """Return a 40-byte V1 data packet for Line 1 or Line 2."""
     packet = bytearray(40)
@@ -36,6 +48,7 @@ def v1_packet(
     packet[11:15] = struct.pack(">i", round(power * 10000))
     packet[15:19] = struct.pack(">i", round(energy * 10000))
     packet[19] = error
+    packet[20:23] = power_factor.to_bytes(3, "big")  # power factor x 1000
     packet[31:35] = struct.pack(">i", round(frequency * 100))
     packet[37:40] = b"\x00\x00\x00" if line == 1 else b"\x01\x01\x01"
     return bytes(packet)
