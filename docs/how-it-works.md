@@ -181,6 +181,10 @@ V1 command wire format is unresolved — writes are accepted by the device but s
 | Neutral detection | N/A | NeutralDetection 0x0D | Switch (V2 only) |
 | Delete errors | `deleteAllRecord` | ErrorDel 0x05 (0xFF=all) | Button (V2 only) |
 
+## Distribution
+
+The repository is installed through HACS, which Home Assistant 2026.11 and newer provide built in as the **Marketplace**. Both read `hacs.json` (and the `custom_components/hughes_power_watchdog/` folder layout) from the GitHub repository, and both install pre-releases only when the user opts in (HACS: "Show beta versions"; Marketplace: the per-repository **Pre-release** entity). The `Validate` workflow still runs the `hacs/action` check. The integration itself needs no code change for the Marketplace: it doesn't use HACS's internal data, `hass.data["hacs"]`, or its dispatcher signals. User-facing install steps are in the README.
+
 ## Tests
 
 `tests/` holds the pytest suite (run with `pytest`; settings in `pytest.ini`, pinned dependencies in `requirements_test.txt`, which uses `pytest-homeassistant-custom-component`). Requires Python 3.13. Locally: `uv venv --python 3.13 .venv`, `uv pip install --prerelease=allow --python .venv/bin/python -r requirements_test.txt` (Home Assistant pins an exact pre-release of one dependency), then `.venv/bin/python -m pytest`. The `Tests` GitHub Action (`.github/workflows/tests.yml`) runs it on pushes and pull requests to `main` and `development`; it is separate from the `Validate` workflow (Hassfest and HACS).

@@ -105,7 +105,22 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 
 ## Installation
 
-### HACS Installation (Recommended)
+Home Assistant **2026.11** moved HACS into Home Assistant itself as the built-in **Marketplace** (see the [2026.11 release notes](https://www.home-assistant.io/blog/2026/11/04/release-202611/) and the [Marketplace documentation](https://www.home-assistant.io/integrations/marketplace/)). Follow the section that matches your Home Assistant version. This integration still requires Home Assistant **2024.11.0** or newer.
+
+### Marketplace Installation (Home Assistant 2026.11 and newer)
+
+1. Open **Settings > Marketplace**. The first time, select "I understand the risks and agree."
+2. In the upper-right corner, select **Add from link**.
+3. Under "GitHub link", enter `https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog` (or `john-k-mcdowell/My-Hughes-Power-Watchdog`). If asked for a type, choose **Integration**, then select **Add**. Adding a custom repository needs a connected GitHub account; if prompted, select **Continue**, open the link, enter the code and approve.
+4. Open "Hughes Power Watchdog" in the Marketplace and select **Install**, review the version, and select **Install** again.
+5. If the setup page doesn't open on its own, add the integration under **Settings > Devices & services**. If Home Assistant asks for a restart first, a repair under **Settings > System > Repairs** says so and can restart Home Assistant for you.
+6. **After updating** the integration later, restart Home Assistant to apply the update (the Marketplace shows a repair as a reminder).
+
+**Already using HACS?** Nothing to do. Home Assistant migrates HACS into the Marketplace on the first start after updating to 2026.11. Installed integrations, custom repositories and update entities carry over, and the HACS integration is removed. The separate HACS installer no longer works on 2026.11 and newer.
+
+**Beta (pre-release) versions:** the Marketplace only offers stable releases by default. To try a pre-release: open **Settings > Devices & services > Marketplace**, open the entry for this repository, enable the **Pre-release** entity (it is disabled by default), and turn it on. Then update from the Marketplace as usual. You can also pick a specific version with the three-dots menu and **Install another version**, but don't use that to roll back; restore a backup instead.
+
+### HACS Installation (Home Assistant before 2026.11)
 
 1. Open HACS in your Home Assistant instance
 2. Click on "Integrations"
@@ -117,6 +132,8 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 8. Find "Hughes Power Watchdog" in the integration list
 9. Click "Download"
 10. Restart Home Assistant
+
+To try a beta, enable "Show beta versions" in the HACS settings for this repository.
 
 ### Manual Installation
 
@@ -207,6 +224,9 @@ Debug logs include your device's raw BLE packet bytes but no personal informatio
 - Make sure Bluetooth is enabled on your Home Assistant host
 - Verify your Hughes device is powered on and within Bluetooth range
 - Try using the Hughes mobile app to confirm the device is functioning
+
+### Entity Names Look Different After Updating to Home Assistant 2026.11
+Home Assistant 2026.11 changed how dashboards label entities: a card, badge or row without a custom name now shows the device name followed by the entity name (for example "Power Watchdog Voltage Line 1") instead of just the entity's friendly name. Entity IDs, automations and scripts are not affected. This is a Home Assistant display change, not something the integration does; set a name on the card row if you prefer the old look. See the [2026.11 release notes](https://www.home-assistant.io/blog/2026/11/04/release-202611/).
 
 ### Connection Issues
 - Disconnect any mobile apps connected to the Hughes device
