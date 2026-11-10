@@ -205,3 +205,20 @@ async def test_v2_dual_block_relay_state_from_open_bit(make_coordinator) -> None
 
     coordinator._notification_handler_v2(0, bytearray(V2_DUAL_CLOSED))
     assert coordinator._build_data_dict()[SENSOR_RELAY_STATUS] == 0x00
+
+
+@pytest.mark.parametrize("offset", [41, 75])
+@pytest.mark.parametrize("error,open_", [(8, True), (3, True), (4, True), (1, False), (0, False)])
+async def test_v2_dual_block_trip_error_counts_as_relay_open(
+    make_coordinator, offset: int, error: int, open_: bool
+) -> None:
+    """E3/E4/E8 leave byte 42 clear (issue #26) but still mean the relay is open."""
+    from custom_components.hughes_power_watchdog.const import SENSOR_RELAY_STATUS
+
+    packet = bytearray(V2_DUAL_CLOSED)
+    packet[offset] = error
+    coordinator = make_coordinator("WD_E5_000000000000")
+
+    coordinator._notification_handler_v2(0, bytearray(packet))
+
+    assert coordinator._build_data_dict()[SENSOR_RELAY_STATUS] == (0x10 if open_ else 0x00)

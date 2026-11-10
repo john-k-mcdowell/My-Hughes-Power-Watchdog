@@ -129,6 +129,7 @@ from .const import (
     V2_DUAL_BLOCK_L2_POWER_FACTOR_START,
     V2_DUAL_BLOCK_L2_POWER_FACTOR_END,
     V2_DUAL_BLOCK_RELAY_OPEN_BIT,
+    V2_DUAL_BLOCK_TRIP_ERROR_CODES,
     # V1 protocol UUIDs
     LEGACY_SERVICE_UUID,
     # Shared constants
@@ -1681,8 +1682,8 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         power factor/neutral monitoring, by a packet capture reported in
         issue #14. Byte 42 is relay status (0x00=ON) on single-block (30A)
         packets. On dual-block (50A) packets the low bit is a block/line
-        identifier and bit 0x10 is set while the relay is open (experimental,
-        issues #17/#26) - pass is_dual_block to select the right meaning.
+        identifier, bit 0x10 is set after a commanded open, and an E3/E4/E8
+        trip also counts as open (experimental, issues #17/#26) - pass is_dual_block to select the right meaning.
         """
         # Power factor (bytes 25-28, uint32 / 1000)
         pf_bytes = data[V2_BYTE_POWER_FACTOR_START:V2_BYTE_POWER_FACTOR_END]
@@ -1729,12 +1730,19 @@ class HughesPowerWatchdogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Byte 42: relay status on single-block (30A) packets (0x00=ON).
         # On dual-block (50A) packets the low bit is the block/line ID and
-        # bit 0x10 is set while the relay is open (experimental: seen for a
-        # commanded open on a WD_E7 and WD_E5, issues #17/#26). Store only
-        # that bit so 0x00 still means ON for the entities.
+        # bit 0x10 is set while the relay is open after a commanded open
+        # (experimental: WD_E7 and WD_E5, issues #17/#26). A trip (E3/E4/E8)
+        # leaves that bit clear (seen for E8 on a WD_E5, issue #26) but opens
+        # the relay, so those errors also count. Stored as 0x10 (open) or
+        # 0x00 (on) so the entities' 0x00 = ON check still works.
         byte_42 = data[V2_BYTE_LINE_ID]
         if is_dual_block:
-            self._relay_status = byte_42 & V2_DUAL_BLOCK_RELAY_OPEN_BIT
+            tripped = (
+                error_code in V2_DUAL_BLOCK_TRIP_ERROR_CODES
+                or data[V2_DUAL_BLOCK_L2_ERROR_CODE] in V2_DUAL_BLOCK_TRIP_ERROR_CODES
+            )
+            open_bit = byte_42 & V2_DUAL_BLOCK_RELAY_OPEN_BIT
+            self._relay_status = V2_DUAL_BLOCK_RELAY_OPEN_BIT if tripped else open_bit
         else:
             self._relay_status = byte_42
 
