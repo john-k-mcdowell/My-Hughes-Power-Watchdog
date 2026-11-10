@@ -85,6 +85,8 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 **Gen 1 (V1) devices:**
 - **Restart After Trip** (button) - Restores power after the Watchdog trips on an over-current (E3/E4) or missing-neutral (E8) error, the same as the restart button on the official Gen 1 app's alert screen. Pressing it when no E3/E4/E8 error is active is refused and nothing is sent to the device. The button's attributes show when the command was last sent (`last_sent`) and the device's acknowledgment (`last_reply`, normally `relay on`, and `last_reply_time`). Clear the cause of the trip (reduce the load) before pressing it.
 
+> **Tested on Gen 1 30A only.** The Restart After Trip button has been verified on a Gen 1 30A device, but **not on a Gen 1 50A (dual-line) device**. 50A devices report each line separately, so behavior on a real E3/E4/E8 trip may differ. **If you use this button on a Gen 1 50A device, please report whether it worked or not on [issue #25](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/25).** Include the error (E3, E4 or E8), whether power was restored, and the button's `last_reply` attribute. Please don't force a trip just to test it.
+
 **Gen 2 (V2) devices:**
 - **Power Relay** (switch) - Turn the power relay on/off. On 30A (single-line) devices the on/off indicator reflects real relay state. On 50A (dual-line) devices no protocol byte reliably reports live relay state, so the indicator shows as unknown — the commands themselves still work on both.
 - **Backlight** (light with brightness) - Control the device LED brightness (levels 0-5; HA brightness 0-255 is mapped to the nearest discrete level).

@@ -161,7 +161,7 @@ The app maps its internal command names (an enum: `relayOn`, `reset`, ...) to di
 
 | App command (enum) | Wire string written to `0xFFF5` | Ack on `0xFFE2` | Description | Status in this integration |
 |---------|-------------------|-------------------|-------------|------|
-| `relayOn` | `RELAY ON` (`52 45 4C 41 59 20 4F 4E`) | `relay on` | Restart power after a trip. The app only shows this button for errors 3 (L1 over-current), 4 (L2 over-current) and 8 (neutral missing) | **Implemented and tested** (Restart After Trip button) |
+| `relayOn` | `RELAY ON` (`52 45 4C 41 59 20 4F 4E`) | `relay on` | Restart power after a trip. The app only shows this button for errors 3 (L1 over-current), 4 (L2 over-current) and 8 (neutral missing) | **Implemented; tested on 30A only** — 50A untested, see [issue #25](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/25) (Restart After Trip button) |
 | `reset` | `RESEt` (note the lowercase `t`) | `RESET` | Reset accumulated kWh to 0 | Not yet wired up (untested) |
 | `deleteIndexRecord` | `DEL:REC` + record number | `del:rec...` | Delete one error record | Not yet wired up (untested) |
 | `deleteAllRecord` | `DEL:RECA` | `del:rec...` | Delete all error history | Not yet wired up (untested) |
@@ -169,7 +169,7 @@ The app maps its internal command names (an enum: `relayOn`, `reset`, ...) to di
 | `backLight` | `SET:BL` + level digit | `set:bl...` | Set LED brightness (0-4) | Not yet wired up (untested) |
 | `powerOnTime` | `POWER ON TIME` | `power on time:` + 5 bytes | Request last power-on date/time | Not yet wired up (untested) |
 
-> **Restart After Trip (tested):** On a real Gen 1 device, after a forced over-current trip, writing `RELAY ON` to `0xFFF5` produced the `relay on` acknowledgment on `0xFFE2` and the Watchdog restored power. The integration only sends it while the device reports E3, E4 or E8, matching the app.
+> **Restart After Trip (tested):** On a real Gen 1 device, after a forced over-current trip, writing `RELAY ON` to `0xFFF5` produced the `relay on` acknowledgment on `0xFFE2` and the Watchdog restored power. The integration only sends it while the device reports E3, E4 or E8, matching the app. **Verified on a Gen 1 30A device only; not yet tested on a Gen 1 50A (dual-line) device**, where each line's packet carries its own error byte and it is unknown whether a trip sets it on both. Reports from 50A owners are requested on [issue #25](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/25).
 >
 > **Other V1 commands:** the wire strings above come from the same app code but have not been tested on hardware, so the corresponding entities (relay switch, backlight light, energy-reset button, error-delete button) remain hidden on V1 devices. The legacy code path (`_send_v1_command` in `coordinator.py`) still sends the enum names to `0x1003`.
 >

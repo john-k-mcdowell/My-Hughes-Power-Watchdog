@@ -107,7 +107,7 @@ HA binary sensor entities (V2 protocol only):
 HA button entities. V2 only, except the V1 restart button (other V1 command support is work-in-progress):
 - `HughesPowerWatchdogEnergyResetButton` - Resets cumulative kWh counter to zero (V2). Raises an error in the UI if the command fails
 - `HughesPowerWatchdogErrorDeleteButton` - Deletes all stored error records from device (V2). Raises an error in the UI if the command fails
-- `HughesPowerWatchdogTripRestartButton` - Restarts power after an E3/E4/E8 trip (**V1 only**). Raises an error in the UI if no such trip is active or the write fails. Attributes: `last_sent`, `last_reply`, `last_reply_time`
+- `HughesPowerWatchdogTripRestartButton` - Restarts power after an E3/E4/E8 trip (**V1 only**). Raises an error in the UI if no such trip is active or the write fails. Attributes: `last_sent`, `last_reply`, `last_reply_time`. Verified on 30A only; 50A (V1) is untested, see issue #25
 
 ### `light.py`
 HA light entity with brightness control (**V2 only** — V1 command support is work-in-progress):
