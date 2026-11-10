@@ -75,11 +75,17 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 - **Line 2 Current** (amps)
 - **Line 2 Power** (watts)
 - **Total Combined Power** (L1 + L2, watts)
+- **Energy Line 1** / **Energy Line 2** (kWh) - The device's per-line energy counters. Unlike integrating the power sensors in Home Assistant, they include usage while the device was disconnected from Home Assistant
 - **Frequency Line 2** (Hz) - AC power line frequency for Line 2 (Gen 2 V2 only)
 
 ### Device Controls (v0.8.0)
 
-> **Gen 1 (V1) device commands are a work in progress.** BLE writes succeed but the device currently ignores them, so command entities (Power Relay, Backlight, Reset Energy, Clear Error History) are **only exposed on Gen 2 (V2) devices** until the V1 wire format is reverse-engineered. The underlying code remains in the codebase.
+> **Gen 1 (V1) device commands are a work in progress.** BLE writes succeed but the device currently ignores them, so command entities (Power Relay, Backlight, Reset Energy, Clear Error History) are **only exposed on Gen 2 (V2) devices** until the V1 wire format is reverse-engineered. The underlying code remains in the codebase. The one exception is **Restart After Trip** (below), whose wire format is known and tested.
+
+**Gen 1 (V1) devices:**
+- **Restart After Trip** (button) - Restores power after the Watchdog trips on an over-current (E3/E4) or missing-neutral (E8) error, the same as the restart button on the official Gen 1 app's alert screen. Pressing it when no E3/E4/E8 error is active is refused and nothing is sent to the device. The button's attributes show when the command was last sent (`last_sent`) and the device's acknowledgment (`last_reply`, normally `relay on`, and `last_reply_time`). Clear the cause of the trip (reduce the load) before pressing it.
+
+> **Tested on Gen 1 30A only.** The Restart After Trip button has been verified on a Gen 1 30A device, but **not on a Gen 1 50A (dual-line) device**. 50A devices report each line separately, so behavior on a real E3/E4/E8 trip may differ. **If you use this button on a Gen 1 50A device, please report whether it worked or not on [issue #25](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/25).** Include the error (E3, E4 or E8), whether power was restored, and the button's `last_reply` attribute. Please don't force a trip just to test it.
 
 **Gen 2 (V2) devices:**
 - **Power Relay** (switch) - Turn the power relay on/off. On 30A (single-line) devices the on/off indicator reflects real relay state. On 50A (dual-line) devices no protocol byte reliably reports live relay state, so the indicator shows as unknown — the commands themselves still work on both.
@@ -185,7 +191,7 @@ Debug logs include your device's raw BLE packet bytes but no personal informatio
 
 ## Requirements
 
-- Home Assistant 2023.11.0 or newer
+- Home Assistant 2024.11.0 or newer
 - Bluetooth adapter/proxy in range of your Hughes Power Watchdog
 - Hughes Power Watchdog with Bluetooth (Gen 1 or Gen 2)
 
@@ -202,6 +208,18 @@ Debug logs include your device's raw BLE packet bytes but no personal informatio
 - Toggle the Monitoring Switch off and on
 - Restart the integration
 
+## Development
+
+Unit tests live in `tests/` and run with `pytest`. Using [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv venv --python 3.13 .venv
+uv pip install --prerelease=allow --python .venv/bin/python -r requirements_test.txt
+.venv/bin/python -m pytest
+```
+
+The `Tests` GitHub Action runs the same suite on pushes and pull requests to `main` and `development`.
+
 ## Credits
 
 Based on the original ESPHome implementation by:
@@ -212,14 +230,16 @@ Based on the original ESPHome implementation by:
 
 V1/V2 protocol documentation reverse-engineered from the Android app source by:
 - [gearhead765](https://github.com/gearhead765)
+- [bmcgair](https://github.com/bmcgair) — Gen 1 (V1) command wire strings and acknowledgments (see [docs/protocol.md](docs/protocol.md))
 
 Additional protocol details cross-referenced against the independent [TechBlueprints/dbus-power-watchdog](https://github.com/TechBlueprints/dbus-power-watchdog) Venus OS D-Bus service, which clarified the booster-model gating for V2 output voltage, temperature, and boost mode. See [docs/protocol.md](docs/protocol.md) for details.
 
 ### Contributors
 - [IAmTheMitchell](https://github.com/IAmTheMitchell) — Gen 2 WD_E5 device support, V2 50A Line 2 sensor fix, protocol documentation for dual-block packet format
 - [gearhead765](https://github.com/gearhead765) — Error Log feature and testing (v0.9.0)
+- [bmcgair](https://github.com/bmcgair) — Gen 1 (V1) command wire format reverse-engineered from the official app, the Restart After Trip button (v0.11.0), and the project's first automated tests
 - [brianfinley](https://github.com/brianfinley) — WD_V7 (PWD30EPOHW) device support and hardware testing (v0.10.2)
-- [snoack](https://github.com/snoack) — Resubscribe after dropped BLE connections, remembering dual-line (50A) devices to fix missing Line 2 sensors, and fixing energy total drops (v0.10.3); 50A relay-state capture (#17)
+- [snoack](https://github.com/snoack) — Resubscribe after dropped BLE connections, remembering dual-line (50A) devices to fix missing Line 2 sensors, and fixing energy total drops (v0.10.3), per-line energy sensors (v0.11.0), and the 50A relay-state capture (#17)
 
 ## License
 

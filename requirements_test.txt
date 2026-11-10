@@ -1,0 +1,7 @@
+# Pins the Home Assistant 2025.1.4 custom-component test plugin.
+# That release pins pytest==8.3.4, pytest-asyncio==0.24.0, and
+# homeassistant==2025.1.4.
+pytest-homeassistant-custom-component==0.13.205
+# homeassistant.components.usb imports pyserial, which Home Assistant does
+# not declare. Tests import bluetooth, which imports usb.
+pyserial==3.5

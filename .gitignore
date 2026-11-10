@@ -46,3 +46,6 @@ tasks/
 
 # Bluetooth logs for reverse engineering
 bt_logs/
+
+# Local test environment (uv)
+.venv/
