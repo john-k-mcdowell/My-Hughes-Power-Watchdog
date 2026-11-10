@@ -55,7 +55,7 @@ class HughesPowerWatchdogEnergyResetButton(
     """Energy reset button for Hughes Power Watchdog.
 
     Resets the cumulative kWh counter to zero. This cannot be undone.
-    V2: EnergyReset command. V1 (experimental, untested on hardware): the app's
+    V2: EnergyReset command. V1 (verified on a V1 50A): the app's
     "RESEt" string written to 0xFFF5; the device acks with "RESET".
     """
 

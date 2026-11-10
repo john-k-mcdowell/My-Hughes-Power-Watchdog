@@ -354,7 +354,10 @@ For 50A devices, the packet contains two 34-byte blocks. Block 2 (Line 2) starts
 ### V2 Commands (App -> Device)
 
 #### EnergyReset (0x03)
-Empty payload. Resets accumulated kWh to 0.
+Empty payload (`dataLen` = `00 00`). Resets accumulated kWh to 0. Full frame is 11 bytes:
+header `24 79 77 40` (`$yw@`), version `01`, msgId (increments per packet), cmd `03`,
+dataLen `00 00`, tail `71 21`. Example with msgId `e5`: `2479774001e50300007121`.
+(Contributed by gearhead765 in issue #5, from the Android app source.)
 
 #### ErrorDel (0x05)
 1-byte payload: record ID to delete, or `0xFF` to delete all.
