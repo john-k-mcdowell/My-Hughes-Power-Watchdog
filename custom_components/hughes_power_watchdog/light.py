@@ -11,9 +11,12 @@ from homeassistant.components.light import (
     LightEntity,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -37,16 +40,18 @@ async def async_setup_entry(
         config_entry.entry_id
     ]
 
-    # Command entities are only exposed on V2 devices. V1 command support is
-    # still being reverse-engineered — writes succeed but the device ignores them.
-    if not coordinator.is_v2_protocol:
-        return
-
     async_add_entities([HughesPowerWatchdogBacklightLight(coordinator)])
 
 
+def _timestamp_to_iso(timestamp: float | None) -> str | None:
+    """Convert a Unix timestamp to an ISO 8601 UTC string, or None."""
+    if timestamp is None:
+        return None
+    return dt_util.utc_from_timestamp(timestamp).isoformat()
+
+
 class HughesPowerWatchdogBacklightLight(
-    CoordinatorEntity[HughesPowerWatchdogCoordinator], LightEntity
+    CoordinatorEntity[HughesPowerWatchdogCoordinator], LightEntity, RestoreEntity
 ):
     """Backlight brightness control for Hughes Power Watchdog.
 
@@ -55,7 +60,10 @@ class HughesPowerWatchdogBacklightLight(
     - V2: 0-5 (6 levels)
 
     For V2 devices, current level is read from the data stream (byte 33).
-    For V1 devices, the last-set value is tracked locally.
+    For V1 devices (experimental, untested on hardware) there is no known
+    readback, so the last-set level is tracked locally, restored after a
+    restart, and the state is marked as assumed. Whether level 0 turns the
+    V1 LED off is not yet confirmed.
     """
 
     _attr_has_entity_name = True
@@ -78,6 +86,41 @@ class HughesPowerWatchdogBacklightLight(
         )
         # Track last-set level for V1 (no feedback from device)
         self._last_set_level: int | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last-set V1 level, since the device cannot report it."""
+        await super().async_added_to_hass()
+        if not self.coordinator.is_v2_protocol:
+            self._restore_level(await self.async_get_last_state())
+
+    def _restore_level(self, last_state: State | None) -> None:
+        """Set the V1 level from the last known Home Assistant state."""
+        if last_state is None:
+            return
+        if last_state.state == "off":
+            self._last_set_level = 0
+        elif last_state.state == "on":
+            brightness = last_state.attributes.get(ATTR_BRIGHTNESS)
+            if brightness is not None:
+                self._last_set_level = round(brightness / 255 * self._max_level)
+
+    @property
+    def assumed_state(self) -> bool:
+        """Return True for V1, whose backlight level cannot be read back."""
+        return not self.coordinator.is_v2_protocol
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the last V1 command sent and the device's reply (V1 only)."""
+        if self.coordinator.is_v2_protocol:
+            return None
+        info = self.coordinator.v1_command_info
+        return {
+            "last_command": info["last_command"],
+            "last_command_sent": _timestamp_to_iso(info["last_command_sent"]),
+            "last_reply": info["last_reply"],
+            "last_reply_time": _timestamp_to_iso(info["last_reply_time"]),
+        }
 
     @property
     def _device_level(self) -> int | None:
@@ -126,12 +169,17 @@ class HughesPowerWatchdogBacklightLight(
         else:
             level = self._max_level
 
-        await self.coordinator.async_set_backlight(level)
-        self._last_set_level = level
-        self.async_write_ha_state()
+        await self._set_level(level)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the backlight (set to level 0)."""
-        await self.coordinator.async_set_backlight(0)
-        self._last_set_level = 0
+        await self._set_level(0)
+
+    async def _set_level(self, level: int) -> None:
+        """Send a backlight level to the device and update the entity state."""
+        if not await self.coordinator.async_set_backlight(level):
+            raise HomeAssistantError(
+                "Failed to set the backlight level on the Power Watchdog"
+            )
+        self._last_set_level = level
         self.async_write_ha_state()

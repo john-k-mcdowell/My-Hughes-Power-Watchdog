@@ -69,6 +69,7 @@ Key methods:
 - `_next_sequence()` - V2 sequence number (1-100 cycling)
 - `_build_v2_command()` - Constructs $yw@ framed command packet
 - `_send_v2_command()` - Sends V2 command, optionally waits for ResultRes ack (5s timeout)
+- `_send_v1_wire_command(payload, description)` - Writes a raw ASCII command to the V1 command characteristic `0xFFF5` (found by `_find_v1_write_characteristic()`; write-without-response when supported). Used by restart after trip, V1 energy reset (`RESEt`) and V1 backlight (`SET:BL<n>`). Records the command for `v1_command_info`; refuses when monitoring is off. Acks (`RESET`, `set:bl..`, `relay on`) arrive on `0xFFE2` and are recorded by `_notification_handler_v1`
 - `_send_v1_command()` - Writes ASCII command to V1 command characteristic `0x1003` (write-with-response). Legacy path: it sends the app's enum names rather than the real wire strings, so the device ignores them and these V1 command entities are not exposed (see `docs/protocol.md`).
 - `async_restart_after_trip()` - V1 only. Writes the raw ASCII `RELAY ON` to `0xFFF5` (found via `_find_v1_write_characteristic()`), only while monitoring is on and a trip error (E3/E4/E8) has been seen within `V1_TRIP_LATCH_SECONDS` (`active_trip_code`). The latch exists because 50A devices send Line 1 and Line 2 as separate packets that each overwrite the stored error code; `_record_v1_error_code()` stores the code and latches trip errors. The device's `relay on` acknowledgment arrives on `0xFFE2`; `_notification_handler_v1()` records short ASCII command replies separately from the 40-byte data buffer.
 
@@ -104,13 +105,13 @@ HA binary sensor entities (V2 protocol only):
 - `HughesPowerWatchdogBoostModeSensor` - Autoformer boost active/inactive. Only created for booster models (`coordinator.has_booster` → V8/V9/E8/E9).
 
 ### `button.py`
-HA button entities. V2 only, except the V1 restart button (other V1 command support is work-in-progress):
-- `HughesPowerWatchdogEnergyResetButton` - Resets cumulative kWh counter to zero (V2). Raises an error in the UI if the command fails
+HA button entities. V2 gets energy reset and error delete; V1 gets restart after trip and energy reset (other V1 command support is work-in-progress):
+- `HughesPowerWatchdogEnergyResetButton` - Resets cumulative kWh counter to zero (V2; V1 is experimental/untested: writes `RESEt`, expects ack `RESET`; V1 attributes `last_command`, `last_command_sent`, `last_reply`, `last_reply_time`). Raises an error in the UI if the command fails
 - `HughesPowerWatchdogErrorDeleteButton` - Deletes all stored error records from device (V2). Raises an error in the UI if the command fails
 - `HughesPowerWatchdogTripRestartButton` - Restarts power after an E3/E4/E8 trip (**V1 only**). Raises an error in the UI if no such trip is active or the write fails. Attributes: `last_sent`, `last_reply`, `last_reply_time`. Verified on 30A only; 50A (V1) is untested, see issue #25
 
 ### `light.py`
-HA light entity with brightness control (**V2 only** — V1 command support is work-in-progress):
+HA light entity with brightness control (V2; V1 is experimental/untested — writes `SET:BL<0-4>`, has no readback so the state is `assumed_state` and restored with `RestoreEntity`; whether level 0 turns the LED off is unconfirmed):
 - `HughesPowerWatchdogBacklightLight` - Device LED backlight brightness
   - Uses `ColorMode.BRIGHTNESS` (HA range 0-255)
   - Maps to discrete device levels: V2 = 0-5 (V1 = 0-4 when V1 commands are enabled)
@@ -174,9 +175,9 @@ V1 command wire format is unresolved — writes are accepted by the device but s
 | Command | V1 (WIP — not exposed) | V2 | Entity Type |
 |---------|------------------------|----|-------------|
 | Relay on/off | `relayOn` (toggle) | SetOpen 0x0B (explicit on/off) | Switch (V2 only) |
-| Energy reset | `reset` | EnergyReset 0x03 | Button (V2 only) |
+| Energy reset | `RESEt` -> ack `RESET` (experimental) | EnergyReset 0x03 | Button |
 | Clock sync | `setTime` | SetTime 0x06 | Auto on connect |
-| Backlight | `backLight` + level (0-4) | SetBacklight 0x07 (0-5) | Light (V2 only) |
+| Backlight | `SET:BL` + level (0-4) -> ack `set:bl..` (experimental) | SetBacklight 0x07 (0-5) | Light |
 | Neutral detection | N/A | NeutralDetection 0x0D | Switch (V2 only) |
 | Delete errors | `deleteAllRecord` | ErrorDel 0x05 (0xFF=all) | Button (V2 only) |
 
@@ -188,6 +189,8 @@ V1 command wire format is unresolved — writes are accepted by the device but s
 - `packets.py` - Packet builders and the real WD_E7 50A packets captured in issue #17
 - `test_trip_restart.py` - V1 Restart After Trip: command gating (E3/E4/E8 only, V1 only, monitoring on), 50A trip latch, characteristic lookup and failure paths, write-type selection, ack handling that keeps replies out of the data buffer, the buttons (identity, availability, failures) and button platform setup
 - `test_dual_line_energy.py` - 50A detection and persistence, per-line and total energy (V1 and V2), invalid Line 2 handling, energy reset
+- `fakes.py` - Fake BLE client with a V1-style GATT table
+- `test_v1_commands.py` - V1 energy reset and backlight commands: payloads and clamping, acks, failure handling, light assumed state and restore, button/light platform setup for V1 and V2
 - `test_session_state.py` - Init/subscription state reset on new connections and disconnects
 
 ## Version History

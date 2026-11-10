@@ -162,10 +162,8 @@ FREQUENCY_CONVERSION_FACTOR = 100
 
 # V1 Commands (ASCII strings sent via RX characteristic)
 V1_CMD_RELAY_ON = "relayOn"
-V1_CMD_ENERGY_RESET = "reset"
 V1_CMD_DELETE_ALL_RECORDS = "deleteAllRecord"
 V1_CMD_SET_TIME = "setTime"
-V1_CMD_BACKLIGHT = "backLight"
 
 # V1 restart after trip (the "relay on" button the official Gen 1 app shows
 # on its E3/E4/E8 alert). Raw ASCII written to V1_CHARACTERISTIC_UUID_RX
@@ -191,6 +189,13 @@ V1_COMMAND_REPLY_PREFIXES = (
     b"set:bl",
     b"power on time:",
 )
+
+# V1 commands written as raw ASCII to V1_CHARACTERISTIC_UUID_RX (0xFFF5). These
+# are the wire strings the official Gen 1 app sends (not its enum names).
+# Energy reset: device acks with "RESET". Backlight: "SET:BL" + one digit
+# (0-4), device acks with "set:bl...". Both are UNTESTED on hardware.
+V1_ENERGY_RESET_PAYLOAD = b"RESEt"
+V1_BACKLIGHT_PAYLOAD_PREFIX = b"SET:BL"
 
 # V1 Backlight range
 V1_BACKLIGHT_MAX = 4
