@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from bleak.exc import BleakError
@@ -185,16 +185,37 @@ async def test_reset_button_press_sends_command(v1) -> None:
     client.write_gatt_char.assert_awaited_once()
 
 
-async def test_light_platform_adds_light_on_v1_and_v2(
+async def test_light_platform_v1_disabled_v2_enabled(
     hass: HomeAssistant, make_coordinator
 ) -> None:
-    """Both generations get the backlight light."""
-    for name in ("PMS0000000000000000", "WD_V5_000000000000"):
-        coordinator = make_coordinator(name)
+    """V1 gets no light (no known backlight control); V2 still does."""
+    v1 = make_coordinator("PMS0000000000000000")
+    v2 = make_coordinator("WD_V5_000000000000")
+    for coordinator in (v1, v2):
         hass.data.setdefault(DOMAIN, {})[coordinator.config_entry.entry_id] = coordinator
-        added: list = []
-        await light_setup_entry(hass, coordinator.config_entry, lambda e: added.extend(e))
-        assert [type(e) for e in added] == [HughesPowerWatchdogBacklightLight]
+
+    added_v1: list = []
+    await light_setup_entry(hass, v1.config_entry, lambda e: added_v1.extend(e))
+    assert added_v1 == []
+
+    added_v2: list = []
+    await light_setup_entry(hass, v2.config_entry, lambda e: added_v2.extend(e))
+    assert [type(e) for e in added_v2] == [HughesPowerWatchdogBacklightLight]
+
+
+async def test_light_platform_v1_enabled_by_flag(
+    hass: HomeAssistant, make_coordinator
+) -> None:
+    """The V1 light code is kept: flipping the flag exposes it on V1 again."""
+    v1 = make_coordinator("PMS0000000000000000")
+    hass.data.setdefault(DOMAIN, {})[v1.config_entry.entry_id] = v1
+    added: list = []
+    with patch(
+        "custom_components.hughes_power_watchdog.light.V1_BACKLIGHT_ENTITY_ENABLED",
+        True,
+    ):
+        await light_setup_entry(hass, v1.config_entry, lambda e: added.extend(e))
+    assert [type(e) for e in added] == [HughesPowerWatchdogBacklightLight]
 
 
 def _light(hass: HomeAssistant, coordinator) -> HughesPowerWatchdogBacklightLight:

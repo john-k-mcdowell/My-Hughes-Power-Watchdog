@@ -22,6 +22,7 @@ from .const import (
     DOMAIN,
     LIGHT_BACKLIGHT,
     SENSOR_BACKLIGHT,
+    V1_BACKLIGHT_ENTITY_ENABLED,
     V1_BACKLIGHT_MAX,
     V2_BACKLIGHT_MAX,
 )
@@ -39,6 +40,10 @@ async def async_setup_entry(
     coordinator: HughesPowerWatchdogCoordinator = hass.data[DOMAIN][
         config_entry.entry_id
     ]
+
+    # V1: only when enabled (see V1_BACKLIGHT_ENTITY_ENABLED in const.py)
+    if not coordinator.is_v2_protocol and not V1_BACKLIGHT_ENTITY_ENABLED:
+        return
 
     async_add_entities([HughesPowerWatchdogBacklightLight(coordinator)])
 

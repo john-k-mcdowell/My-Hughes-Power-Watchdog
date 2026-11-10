@@ -57,6 +57,7 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 - **Error Code** (number)
 - **Error Description** (text)
 - **Frequency Line 1** (Hz) - AC power line frequency
+- **Power Factor** (per line) - Ratio of real to apparent power. Gen 2 devices report it directly. On Gen 1 it is decoded from bytes 20-22 of the data packets; verified on a Gen 1 50A device, where it matches P / (V × I), but not yet on other Gen 1 models (values outside 0-1 are ignored)
 
 **Gen 2 (V2) Booster Models Only (V8/V9/E8/E9) — _untested_:**
 - **Output Voltage** (volts) - Voltage after autoformer adjustment (field mirrors the energy counter on non-booster V5/E5/V6/E6 devices, so it is hidden there)
@@ -68,7 +69,6 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 **Gen 2 (V2) Models Only:**
 - **Relay Status** - Whether the power relay is ON or tripped (binary sensor). Only reported on 30A (single-line) devices — unavailable on 50A (dual-line) devices, see note below.
 - **Neutral Detection** - Whether a lost-neutral fault (error code 8) is currently reported (binary sensor)
-- **Power Factor** (per line) - Ratio of real to apparent power
 
 **50 Amp (Dual-Line) Units Only:**
 - **Line 2 Voltage** (volts)
@@ -80,7 +80,7 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 
 ### Device Controls (v0.8.0)
 
-> **Gen 1 (V1) device commands are a work in progress.** BLE writes succeed but the device currently ignores them, so the Power Relay switch and Clear Error History button are **only exposed on Gen 2 (V2) devices** until their V1 wire formats are verified. Restart After Trip, Reset Energy Counter and Backlight are exposed on Gen 1 (see below). The underlying code remains in the codebase. The one exception is **Restart After Trip** (below), whose wire format is known and tested.
+> **Gen 1 (V1) device commands are a work in progress.** BLE writes succeed but the device currently ignores them, so the Power Relay switch and Clear Error History button are **only exposed on Gen 2 (V2) devices** until their V1 wire formats are verified. Restart After Trip and Reset Energy Counter are exposed on Gen 1 (see below). The underlying code remains in the codebase. The one exception is **Restart After Trip** (below), whose wire format is known and tested.
 
 **Gen 1 (V1) devices:**
 - **Restart After Trip** (button) - Restores power after the Watchdog trips on an over-current (E3/E4) or missing-neutral (E8) error, the same as the restart button on the official Gen 1 app's alert screen. Pressing it when no E3/E4/E8 error is active is refused and nothing is sent to the device. The button's attributes show when the command was last sent (`last_sent`) and the device's acknowledgment (`last_reply`, normally `relay on`, and `last_reply_time`). Clear the cause of the trip (reduce the load) before pressing it.
@@ -88,9 +88,9 @@ Starting with v0.6.0, the integration uses a **push-based model** for real-time 
 > **Tested on Gen 1 30A only.** The Restart After Trip button has been verified on a Gen 1 30A device, but **not on a Gen 1 50A (dual-line) device**. 50A devices report each line separately, so behavior on a real E3/E4/E8 trip may differ. **If you use this button on a Gen 1 50A device, please report whether it worked or not on [issue #25](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/25).** Include the error (E3, E4 or E8), whether power was restored, and the button's `last_reply` attribute. Please don't force a trip just to test it.
 
 - **Reset Energy Counter** (button) - Zeroes the device's cumulative kWh counter using the real command from the official Gen 1 app. **This cannot be undone.** Verified on a Gen 1 50A device: the device replies `RESET` and **both lines** reset to zero. The button's attributes show the last command sent and the device's reply (`last_reply`). Add a confirmation to your dashboard card if you want protection against accidental presses.
-- **Backlight** (light) - **Experimental, not yet working.** Sets the LED brightness (levels 0-4). Gen 1 devices don't report the level back, so Home Assistant shows the last level you set (and remembers it across restarts). The first attempt, which sent the level as an ASCII digit (`SET:BL4`), got no reply and had no effect on a Gen 1 50A device. Version 0.12.0-beta.2 sends the level as a raw byte instead; whether that works, and whether level 0 turns the LED off, is not yet known. The light's attributes show `last_command` and `last_reply` (a working command should reply `set:bl`).
+- **Backlight:** not available on Gen 1, see the note below.
 
-> **Please report results for the experimental Gen 1 backlight.** Tell us on a [new issue](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/new) whether the light changed the LED and what each level looks like, especially whether level 0 turns it off. Include your device model.
+> **No Gen 1 backlight control (so far).** A Gen 1 50A device (BLE name `PMD…`) did not respond to the official app's backlight command in either form we tried (the level as an ASCII digit, and as a raw byte): no reply and no change. Its official iOS app has no backlight setting either, so that model most likely has no software-controllable backlight, and the integration no longer creates a Gen 1 Backlight light. The Gen 1 backlight code is kept, disabled by `V1_BACKLIGHT_ENTITY_ENABLED` in `const.py`. If your Gen 1 device's official app **does** have a backlight setting and you would like to help test it, please [open an issue](https://github.com/john-k-mcdowell/My-Hughes-Power-Watchdog/issues/new) with your model name.
 
 **Gen 2 (V2) devices:**
 - **Power Relay** (switch) - Turn the power relay on/off. On 30A (single-line) devices the on/off indicator reflects real relay state. On 50A (dual-line) devices no protocol byte reliably reports live relay state, so the indicator shows as unknown — the commands themselves still work on both.
@@ -172,7 +172,7 @@ Starting with v0.5.0, this integration supports Gen 2 devices (WiFi + Bluetooth 
 - Error codes - Working (v0.7.0)
 - Frequency - Working (v0.7.0)
 - Line 2 (50A dual-phase) - Working
-- Neutral Detection, Power Factor - Working (v0.10.0)
+- Neutral Detection, Power Factor - Working (v0.10.0). Gen 1 power factor sensors added in v0.12.0
 - Device commands — relay, backlight, energy reset, error delete, clock sync - Working (v0.8.0)
 - Output Voltage, Temperature, Boost Mode (booster models V8/V9/E8/E9 only) - **Untested**
 - Neutral Detection Control switch - Working, reflects real device state (v0.10.0)

@@ -204,6 +204,14 @@ V1_COMMAND_REPLY_PREFIXES = (
 V1_ENERGY_RESET_PAYLOAD = b"RESEt"
 V1_BACKLIGHT_PAYLOAD_PREFIX = b"SET:BL"
 
+# Whether Gen 1 (V1) devices get a Backlight light entity. Disabled: neither the
+# ASCII-digit ("SET:BL4") nor the raw-byte ("SET:BL" + 0x04) command got a reply
+# or any effect on a Gen 1 50A (PMD...), whose official app has no backlight
+# setting, so that model most likely has no backlight control. The V1 backlight
+# code is kept so owners of a Gen 1 device that does have one can help test it:
+# set this to True to expose the light on V1.
+V1_BACKLIGHT_ENTITY_ENABLED = False
+
 # V1 Backlight range
 V1_BACKLIGHT_MAX = 4
 
