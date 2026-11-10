@@ -155,6 +155,11 @@ V2_VOLTAGE_MIN = 90.0  # Minimum reasonable voltage (V)
 V2_VOLTAGE_MAX = 145.0  # Maximum reasonable voltage (V)
 
 # V1 frequency field in chunk 2 (bytes 31-34)
+# Power factor x1000 as a 3-byte big-endian value (e.g. 840 = 0.840). Inferred
+# from captured packets (matches P / (V x I)); UNCONFIRMED beyond the V1 50A.
+V1_BYTE_POWER_FACTOR_START = 20
+V1_BYTE_POWER_FACTOR_END = 23
+V1_POWER_FACTOR_DIVISOR = 1000
 V1_BYTE_FREQUENCY_START = 31
 V1_BYTE_FREQUENCY_END = 35
 # Frequency conversion factor (int32 / 100 = Hz)
@@ -192,8 +197,10 @@ V1_COMMAND_REPLY_PREFIXES = (
 
 # V1 commands written as raw ASCII to V1_CHARACTERISTIC_UUID_RX (0xFFF5). These
 # are the wire strings the official Gen 1 app sends (not its enum names).
-# Energy reset: device acks with "RESET". Backlight: "SET:BL" + one digit
-# (0-4), device acks with "set:bl...". Both are UNTESTED on hardware.
+# Energy reset: device acks with "RESET" (verified on a V1 50A). Backlight:
+# "SET:BL" + the level (0-4) as ONE RAW BYTE, device acks with "set:bl...".
+# The ASCII-digit form ("SET:BL4") got no ack and no effect on a V1 50A, so the
+# raw-byte form is being tried; it is UNTESTED.
 V1_ENERGY_RESET_PAYLOAD = b"RESEt"
 V1_BACKLIGHT_PAYLOAD_PREFIX = b"SET:BL"
 

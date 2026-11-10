@@ -106,12 +106,12 @@ HA binary sensor entities (V2 protocol only):
 
 ### `button.py`
 HA button entities. V2 gets energy reset and error delete; V1 gets restart after trip and energy reset (other V1 command support is work-in-progress):
-- `HughesPowerWatchdogEnergyResetButton` - Resets cumulative kWh counter to zero (V2; V1 is experimental/untested: writes `RESEt`, expects ack `RESET`; V1 attributes `last_command`, `last_command_sent`, `last_reply`, `last_reply_time`). Raises an error in the UI if the command fails
+- `HughesPowerWatchdogEnergyResetButton` - Resets cumulative kWh counter to zero (V2; V1 verified on a 50A: writes `RESEt`, device acks `RESET` and both lines zero; V1 attributes `last_command`, `last_command_sent`, `last_reply`, `last_reply_time`). Raises an error in the UI if the command fails
 - `HughesPowerWatchdogErrorDeleteButton` - Deletes all stored error records from device (V2). Raises an error in the UI if the command fails
 - `HughesPowerWatchdogTripRestartButton` - Restarts power after an E3/E4/E8 trip (**V1 only**). Raises an error in the UI if no such trip is active or the write fails. Attributes: `last_sent`, `last_reply`, `last_reply_time`. Verified on 30A only; 50A (V1) is untested, see issue #25
 
 ### `light.py`
-HA light entity with brightness control (V2; V1 is experimental/untested — writes `SET:BL<0-4>`, has no readback so the state is `assumed_state` and restored with `RestoreEntity`; whether level 0 turns the LED off is unconfirmed):
+HA light entity with brightness control (V2; V1 is experimental — writes `SET:BL` + the level as one raw byte (the ASCII-digit form got no ack on a V1 50A), has no readback so the state is `assumed_state` and restored with `RestoreEntity`; whether level 0 turns the LED off is unconfirmed):
 - `HughesPowerWatchdogBacklightLight` - Device LED backlight brightness
   - Uses `ColorMode.BRIGHTNESS` (HA range 0-255)
   - Maps to discrete device levels: V2 = 0-5 (V1 = 0-4 when V1 commands are enabled)
@@ -175,9 +175,9 @@ V1 command wire format is unresolved — writes are accepted by the device but s
 | Command | V1 (WIP — not exposed) | V2 | Entity Type |
 |---------|------------------------|----|-------------|
 | Relay on/off | `relayOn` (toggle) | SetOpen 0x0B (explicit on/off) | Switch (V2 only) |
-| Energy reset | `RESEt` -> ack `RESET` (experimental) | EnergyReset 0x03 | Button |
+| Energy reset | `RESEt` -> ack `RESET` (verified on V1 50A) | EnergyReset 0x03 | Button |
 | Clock sync | `setTime` | SetTime 0x06 | Auto on connect |
-| Backlight | `SET:BL` + level (0-4) -> ack `set:bl..` (experimental) | SetBacklight 0x07 (0-5) | Light |
+| Backlight | `SET:BL` + level byte (0-4) -> ack `set:bl..` (experimental; ASCII digit had no effect) | SetBacklight 0x07 (0-5) | Light |
 | Neutral detection | N/A | NeutralDetection 0x0D | Switch (V2 only) |
 | Delete errors | `deleteAllRecord` | ErrorDel 0x05 (0xFF=all) | Button (V2 only) |
 

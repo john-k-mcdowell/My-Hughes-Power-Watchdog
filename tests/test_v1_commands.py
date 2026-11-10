@@ -89,10 +89,10 @@ async def test_v2_energy_reset_does_not_use_v1_path(make_coordinator) -> None:
 
 @pytest.mark.parametrize(
     ("level", "payload"),
-    [(0, b"SET:BL0"), (1, b"SET:BL1"), (4, b"SET:BL4"), (-3, b"SET:BL0"), (9, b"SET:BL4")],
+    [(0, b"SET:BL\x00"), (1, b"SET:BL\x01"), (4, b"SET:BL\x04"), (-3, b"SET:BL\x00"), (9, b"SET:BL\x04")],
 )
 async def test_v1_backlight_payload_and_clamping(v1, level: int, payload: bytes) -> None:
-    """The level is clamped to 0-4 and sent as 'SET:BL<n>'."""
+    """The level is clamped to 0-4 and sent as 'SET:BL' + one raw byte."""
     coordinator, client = v1
     assert await coordinator.async_set_backlight(level) is True
     client.write_gatt_char.assert_awaited_once_with(
@@ -226,13 +226,13 @@ async def test_v1_light_turn_on_maps_brightness_to_levels(hass, v1) -> None:
     light = _light(hass, coordinator)
 
     await light.async_turn_on(**{ATTR_BRIGHTNESS: 255})
-    assert client.write_gatt_char.await_args.args[1] == b"SET:BL4"
+    assert client.write_gatt_char.await_args.args[1] == b"SET:BL\x04"
     await light.async_turn_on(**{ATTR_BRIGHTNESS: 64})
-    assert client.write_gatt_char.await_args.args[1] == b"SET:BL1"
+    assert client.write_gatt_char.await_args.args[1] == b"SET:BL\x01"
     await light.async_turn_on(**{ATTR_BRIGHTNESS: 1})  # never turns on at level 0
-    assert client.write_gatt_char.await_args.args[1] == b"SET:BL1"
+    assert client.write_gatt_char.await_args.args[1] == b"SET:BL\x01"
     await light.async_turn_on()
-    assert client.write_gatt_char.await_args.args[1] == b"SET:BL4"
+    assert client.write_gatt_char.await_args.args[1] == b"SET:BL\x04"
     assert light.is_on is True
 
 
@@ -243,7 +243,7 @@ async def test_v1_light_turn_off_sends_level_zero(hass, v1) -> None:
     await light.async_turn_on()
     await light.async_turn_off()
 
-    assert client.write_gatt_char.await_args.args[1] == b"SET:BL0"
+    assert client.write_gatt_char.await_args.args[1] == b"SET:BL\x00"
     assert light.is_on is False
     assert light.brightness == 0
     assert light.async_write_ha_state.call_count == 2
